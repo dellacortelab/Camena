@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timedelta
 
 from . import schedule as sched
 from .db import iso, utcnow
 
 log = logging.getLogger("camena.scheduler")
 TICK_SECONDS = 30
+NUDGE_AFTER = timedelta(hours=24)
+NUDGE_HOURS = range(10, 20)  # local time; never at night
 
 
 class Scheduler:
@@ -62,7 +65,27 @@ class Scheduler:
         for task in due:
             await self.run_task(task)
 
+        self.nudge()
         await self.brain.reap_idle()
+
+    def nudge(self, now: datetime | None = None) -> bool:
+        """The tamagotchi move: after a day of silence the companion asks for you, once a day."""
+        now = now or utcnow()
+        local = now.astimezone(self.settings.timezone)
+        if local.hour not in NUDGE_HOURS or self.db.get_json("last_nudge_date") == local.date().isoformat():
+            return False
+        last = self.db.one("SELECT created_at FROM messages WHERE role = 'user' ORDER BY id DESC LIMIT 1")
+        if not last or now - datetime.fromisoformat(last["created_at"]) < NUDGE_AFTER:
+            return False
+        pet = self.brain.pet.get()
+        body = {
+            "hungry": f"{pet['name']} is hungry. Show it something interesting?",
+            "lonely": f"{pet['name']} misses you.",
+            "sleepy": f"{pet['name']} is dozing, but would wake up for you.",
+        }.get(pet["status"], f"{pet['name']} wonders what you're up to today.")
+        self.db.set_json("last_nudge_date", local.date().isoformat())
+        self.push.send(pet["name"], body)
+        return True
 
     async def run_task(self, task: dict) -> None:
         started = utcnow()

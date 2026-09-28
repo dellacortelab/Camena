@@ -104,6 +104,7 @@
         <button role="tab" data-tab="agenda">Agenda</button>
         <button role="tab" data-tab="memory">Memory</button>
         <button role="tab" data-tab="inbox">Inbox</button>
+        <button role="tab" data-tab="activity">Activity</button>
         <button role="tab" data-tab="settings">Settings</button>
       </nav>
       <div id="drawer-body" class="drawer-body"></div>
@@ -114,11 +115,23 @@
     <div class="settings">
       <label class="row"><span>Companion name</span><input id="set-name" maxlength="24"></label>
       <label class="row"><span>Speak every reply</span><input id="set-speak" type="checkbox"></label>
+      <label class="row"><span>Conversation mode <small class="muted">keep listening after spoken replies</small></span>
+        <input id="set-handsfree" type="checkbox"></label>
+      <div class="row"><span>Morning briefing <small class="muted">weather, plans, a nudge or two</small></span>
+        <span class="inline"><input id="set-brief-time" type="time" value="07:00"><button id="set-brief" class="ghost">Set</button></span></div>
       <div class="row"><span>Notifications <small id="push-status" class="muted"></small></span>
         <button id="set-push" class="ghost">Enable</button></div>
       <div class="row"><span>New conversation <small class="muted">memories stay</small></span>
         <button id="set-reset" class="ghost">Start fresh</button></div>
       <div class="row"><span>Lock this device</span><button id="set-logout" class="ghost danger">Lock</button></div>
+      <details class="shortcut-help">
+        <summary>Hey Siri, Action button &amp; Share sheet</summary>
+        <p class="small">Make an iOS Shortcut: <em>Dictate Text</em> → <em>Get Contents of URL</em> (POST, JSON) → <em>Speak Text</em>.</p>
+        <p class="small">URL <code id="sc-url"></code><br>Header <code>Authorization: Bearer <span id="sc-token">••••••</span></code><br>
+          JSON fields: <code>text</code>, optional <code>image</code> (Base64) or <code>url</code>.</p>
+        <p class="small">Name it “Ask Camena” for Siri, assign it to the Action button, and turn on “Show in Share Sheet” to send links and photos.</p>
+        <button id="sc-reveal" class="ghost small">Show token</button> <button id="sc-rotate" class="ghost small danger">New token</button>
+      </details>
       <p class="muted small">Camena runs on your own Claude plan, through a small server you control.
         Install it with Share → Add to Home Screen, then enable notifications here.</p>
     </div>

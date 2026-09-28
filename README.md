@@ -43,6 +43,20 @@ switch it to an API key.
 
 Updates ship by redeploying the server; the app picks them up on next launch.
 
+### "Hey Siri", the Action button and the share sheet
+
+Camena → Settings → *Hey Siri, Action button & Share sheet* shows the URL and token. In the Shortcuts app:
+
+1. **Dictate Text**
+2. **Get Contents of URL**: `https://pathtools.ai/camena/api/shortcut`, method POST, header
+   `Authorization: Bearer <token>`, JSON body `text` = *Dictated Text*
+3. **Speak Text**: *Contents of URL*
+
+Name it **Ask Camena**. "Hey Siri, Ask Camena" now works hands-free (like Muse's wake word); assign it to
+the Action button for the Charm's squeeze-to-talk. For a share-sheet variant, turn on *Show in Share Sheet*,
+skip the dictation step, and send `url` = *Shortcut Input* for links or `image` = *Base64 Encode (Shortcut Input)*
+for photos and screenshots. Anything that needs approval answers "Open Camena to approve."
+
 ## Run it
 
 ```bash

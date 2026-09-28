@@ -346,7 +346,13 @@ function speak(text) {
   u.rate = 1.05;
   u.pitch = 1.1;
   u.onstart = () => setActivity("speaking", "");
-  u.onend = u.onerror = () => { if (state.activity === "speaking") setActivity(null, ""); };
+  u.onend = u.onerror = () => {
+    if (state.activity === "speaking") setActivity(null, "");
+    // Conversation mode: after answering a spoken question, listen for the follow-up.
+    if (prefs.handsfree && state.voiceTurn && !state.busy && !document.hidden) {
+      listen((t) => send(t, { voice: true }));
+    }
+  };
   speechSynthesis.speak(u);
 }
 
@@ -502,12 +508,32 @@ async function openDrawer(tab) {
       body.innerHTML = items.length ? items.map((i) => `<div class="card ${i.read ? "" : "unread"}">
           <div><strong>${esc(i.title)}</strong> <span class="muted small">${localTime(i.created_at)}</span></div>${md(i.body)}</div>`).join("")
         : `<p class="muted">Quiet. Reminders and background finds land here.</p>`;
+    } else if (tab === "activity") {
+      const rows = await api("actions");
+      body.innerHTML = rows.length ? `<p class="muted small">Every action ${esc(state.pet?.name || "Cam")} took or was stopped from taking.</p>` +
+        rows.map((a) => `<div class="action ${a.outcome}"><div><span class="badge">${esc(a.outcome)}</span>
+          <strong>${esc(a.tool.replace(/_/g, " "))}</strong> <span class="muted small">${esc(a.source)} · ${localTime(a.created_at)}</span></div>
+          <div class="muted small">${esc(a.summary)}</div></div>`).join("")
+        : `<p class="muted">Nothing yet.</p>`;
     } else if (tab === "settings") {
       body.innerHTML = $("#settings-tpl").innerHTML;
       $("#set-name").value = state.pet?.name || "";
       $("#set-name").addEventListener("change", async (e) => setPet(await post("pet/name", { name: e.target.value })));
       $("#set-speak").checked = !!prefs.speak;
       $("#set-speak").addEventListener("change", (e) => { prefs.speak = e.target.checked; savePrefs(); });
+      $("#set-handsfree").checked = !!prefs.handsfree;
+      $("#set-handsfree").addEventListener("change", (e) => { prefs.handsfree = e.target.checked; savePrefs(); });
+      $("#set-brief").addEventListener("click", async () => {
+        const r = await post("tasks/morning-brief", { time: $("#set-brief-time").value || "07:00" });
+        $("#set-brief").textContent = `Next ${localTime(r.next_run_at)}`;
+        $("#set-brief").disabled = true;
+      });
+      $("#sc-url").textContent = new URL("api/shortcut", location.href).href;
+      $("#sc-reveal").addEventListener("click", async () => { $("#sc-token").textContent = (await api("shortcut/token")).token; });
+      $("#sc-rotate").addEventListener("click", async () => {
+        if (!confirm("Old shortcuts will stop working. Continue?")) return;
+        $("#sc-token").textContent = (await post("shortcut/rotate")).token;
+      });
       $("#push-status").textContent = pushStatus();
       $("#set-push").addEventListener("click", enablePush);
       $("#set-reset").addEventListener("click", async () => {

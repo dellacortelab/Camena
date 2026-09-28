@@ -6,6 +6,8 @@ Every path is relative so the app works at the root locally and behind Caddy's
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
 import secrets
@@ -16,10 +18,11 @@ from pathlib import Path
 
 import jwt
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import schedule as sched
 from .agent import Brain
 from .config import Settings, load_settings
 from .db import DB, iso, utcnow
@@ -41,6 +44,19 @@ class Rename(BaseModel):
     name: str
 
 
+class Brief(BaseModel):
+    time: str = "07:00"
+
+
+MORNING_BRIEF_PROMPT = """\
+Write the owner's morning briefing, the way a thoughtful personal assistant would. Use what you know
+about them (recall their memories), today's weather where they live, their calendar if a calendar
+connector is available, open reminders and lists, and anything their background tasks found
+recently. Suggest one or two useful things unprompted, based on what you remember (a birthday
+coming up, something to prepare, a follow-up they mentioned). Keep it to five short lines, then
+call `notify` with the title "Good morning" and the briefing as the body."""
+
+
 class App:
     """Everything the routes need, built once at startup."""
 
@@ -52,6 +68,11 @@ class App:
         self.push = Push(self.db, settings.vapid_contact)
         self.brain = Brain(self.db, self.pet, self.push, settings)
         self.scheduler = Scheduler(self.db, self.push, self.brain, settings)
+        if not self.db.get_json("shortcut_token"):
+            self.db.set_json("shortcut_token", secrets.token_urlsafe(24))
+
+    def shortcut_token(self) -> str:
+        return self.db.get_json("shortcut_token")
 
 
 def create_app(settings: Settings | None = None, start_scheduler: bool = True) -> FastAPI:
@@ -68,6 +89,14 @@ def create_app(settings: Settings | None = None, start_scheduler: bool = True) -
 
     app = FastAPI(title="Camena", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.camena = state
+
+    def save_image(data: bytes, content_type: str) -> Path:
+        if len(data) > MAX_IMAGE_BYTES:
+            raise HTTPException(413, "photo too large")
+        suffix = ".png" if content_type.endswith("png") or data[:4] == b"\x89PNG" else ".jpg"
+        path = settings.uploads_dir / f"{utcnow():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:8]}{suffix}"
+        path.write_bytes(data)
+        return path
 
     # ---- auth -----------------------------------------------------------------
 
@@ -127,15 +156,7 @@ def create_app(settings: Settings | None = None, start_scheduler: bool = True) -
             raise HTTPException(400, "say something or show me something")
         if len(images) > MAX_IMAGES:
             raise HTTPException(400, f"at most {MAX_IMAGES} photos per message")
-        saved: list[Path] = []
-        for up in images:
-            data = await up.read()
-            if len(data) > MAX_IMAGE_BYTES:
-                raise HTTPException(413, "photo too large")
-            suffix = ".png" if (up.content_type or "").endswith("png") else ".jpg"
-            path = settings.uploads_dir / f"{utcnow():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:8]}{suffix}"
-            path.write_bytes(data)
-            saved.append(path)
+        saved = [save_image(await up.read(), up.content_type or "") for up in images]
 
         db = state.db
         db.log_message("main", "user", text, saved[0].name if saved else None)
@@ -155,6 +176,69 @@ def create_app(settings: Settings | None = None, start_scheduler: bool = True) -
 
         return StreamingResponse(stream(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    # ---- Siri, the Action button and the share sheet (iOS Shortcuts) ------------------
+
+    @app.post("/api/shortcut")
+    async def shortcut(request: Request):
+        """One turn for an iOS Shortcut; returns plain text for Siri to speak.
+
+        Auth is a bearer token (Shortcuts cannot keep our cookie). Accepts JSON
+        {"text": ..., "image": <base64>, "url": ...} or a multipart form with the
+        same fields (image as a file).
+        """
+        auth = request.headers.get("authorization", "")
+        if not secrets.compare_digest(auth.encode(), f"Bearer {state.shortcut_token()}".encode()):
+            raise HTTPException(401, "bad shortcut token")
+        text, url, image_bytes, ctype = "", "", None, ""
+        if request.headers.get("content-type", "").startswith(("multipart/", "application/x-www-form-urlencoded")):
+            form = await request.form()
+            text, url = str(form.get("text") or ""), str(form.get("url") or "")
+            upload = form.get("image")
+            if upload is not None and hasattr(upload, "read"):
+                image_bytes, ctype = await upload.read(), upload.content_type or ""
+        else:
+            try:
+                body = await request.json()
+            except ValueError:
+                raise HTTPException(400, "send JSON or a form")
+            text, url = str(body.get("text") or ""), str(body.get("url") or "")
+            if body.get("image"):
+                try:
+                    image_bytes = base64.b64decode(body["image"], validate=False)
+                except (binascii.Error, ValueError):
+                    raise HTTPException(400, "image must be base64")
+        if url:
+            text = f"{text}\n\n(Shared link: {url})".strip()
+        saved = [save_image(image_bytes, ctype)] if image_bytes else []
+        if not text.strip() and not saved:
+            raise HTTPException(400, "nothing to say")
+
+        db = state.db
+        db.log_message("main", "user", f"🔗 {text}" if url else f"🎙️ {text}", saved[0].name if saved else None)
+        state.pet.interact("photo" if saved else "voice")
+        reply, approvals = "", []
+        async for event in state.brain.chat(text, saved, voice=True, source="shortcut"):
+            if event["type"] == "done":
+                reply = event["text"]
+            elif event["type"] == "approval":
+                approvals.append(event["tool"])
+            elif event["type"] == "error":
+                raise HTTPException(502, event["message"])
+        if reply:
+            db.log_message("main", "assistant", reply)
+        if approvals:
+            reply += " Open Camena to approve."
+        return PlainTextResponse(reply or "Done.")
+
+    @app.get("/api/shortcut/token", dependencies=authed)
+    async def shortcut_token():
+        return {"token": state.shortcut_token()}
+
+    @app.post("/api/shortcut/rotate", dependencies=authed)
+    async def shortcut_rotate():
+        state.db.set_json("shortcut_token", secrets.token_urlsafe(24))
+        return {"token": state.shortcut_token()}
 
     @app.post("/api/chat/reset", dependencies=authed)
     async def chat_reset():
@@ -230,6 +314,25 @@ def create_app(settings: Settings | None = None, start_scheduler: bool = True) -
     async def memory_delete(mid: int):
         state.db.run("DELETE FROM memories WHERE id = ?", (mid,))
         return {"ok": True}
+
+    @app.post("/api/tasks/morning-brief", dependencies=authed)
+    async def morning_brief(body: Brief):
+        try:
+            spec = sched.validate(f"daily {body.time}")
+        except sched.ScheduleError as e:
+            raise HTTPException(400, str(e))
+        db = state.db
+        db.run("UPDATE tasks SET active = 0 WHERE title = 'Morning briefing'")
+        nxt = sched.next_run(spec, utcnow(), settings.timezone)
+        tid = db.run(
+            "INSERT INTO tasks(title, prompt, schedule, next_run_at, created_at) VALUES(?,?,?,?,?)",
+            ("Morning briefing", MORNING_BRIEF_PROMPT, spec, iso(nxt), iso(utcnow())),
+        )
+        return {"id": tid, "next_run_at": iso(nxt)}
+
+    @app.get("/api/actions", dependencies=authed)
+    async def actions():
+        return state.db.all("SELECT * FROM actions ORDER BY id DESC LIMIT 100")
 
     @app.get("/api/inbox", dependencies=authed)
     async def inbox():

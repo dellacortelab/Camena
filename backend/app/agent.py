@@ -105,6 +105,8 @@ class ChatSession:
     client: ClaudeSDKClient
     ctx: TurnContext
     session_id: str | None
+    auto_allowed: set[str]
+    source: str = "chat"
     last_used: float = field(default_factory=time.monotonic)
     approve_turn: bool = False
     pending_approvals: list[dict] = field(default_factory=list)
@@ -155,7 +157,7 @@ class Brain:
             system_prompt=self.system_prompt(),
             tools=BUILTIN_TOOLS,
             mcp_servers={"camena": server},
-            allowed_tools=BUILTIN_TOOLS + names + self.settings.extra_allowed_tools,
+            allowed_tools=self._allowed(names),
             can_use_tool=can_use_tool,
             permission_mode="default",
             setting_sources=[],
@@ -165,6 +167,15 @@ class Brain:
             max_turns=max_turns,
             include_partial_messages=True,
         )
+
+    def _allowed(self, camena_tool_names: list[str]) -> list[str]:
+        return BUILTIN_TOOLS + camena_tool_names + self.settings.extra_allowed_tools
+
+    def _audit(self, source: str, block: ToolUseBlock, auto_allowed: set[str]) -> None:
+        """Log auto-allowed calls as they stream past; gated ones are logged by the gate."""
+        bare = bare_tool_name(block.name)
+        if block.name in auto_allowed and bare != "express":
+            self.db.log_action(source, bare, summarize_input(block.input), "ran")
 
     def now_tag(self) -> str:
         now = datetime.now(self.settings.timezone)
@@ -180,15 +191,22 @@ class Brain:
 
         async def can_use_tool(name: str, tool_input: dict, _c: ToolPermissionContext):
             session = holder["s"]
-            if not is_write_tool(name) or session.approve_turn:
+            bare, summary = bare_tool_name(name), summarize_input(tool_input)
+            if not is_write_tool(name):
+                self.db.log_action(session.source, bare, summary, "ran")
                 return PermissionResultAllow()
-            session.pending_approvals.append({"tool": bare_tool_name(name), "summary": summarize_input(tool_input)})
+            if session.approve_turn:
+                self.db.log_action(session.source, bare, summary, "approved")
+                return PermissionResultAllow()
+            self.db.log_action(session.source, bare, summary, "blocked")
+            session.pending_approvals.append({"tool": bare, "summary": summary})
             return PermissionResultDeny(
                 message="Blocked pending the owner's approval. Describe exactly what you will do and ask them to tap Approve."
             )
 
         session_id = self.db.get_json("chat_session_id")
-        client = ClaudeSDKClient(self._options(ctx, can_use_tool, session_id, max_turns=40))
+        options = self._options(ctx, can_use_tool, session_id, max_turns=40)
+        client = ClaudeSDKClient(options)
         try:
             await client.connect()
         except Exception:
@@ -197,9 +215,12 @@ class Brain:
             # The stored session may be gone (new container, wiped HOME): start fresh.
             log.warning("could not resume session %s, starting a new one", session_id)
             self.db.set_json("chat_session_id", None)
-            client = ClaudeSDKClient(self._options(ctx, can_use_tool, None, max_turns=40))
+            options = self._options(ctx, can_use_tool, None, max_turns=40)
+            client = ClaudeSDKClient(options)
             await client.connect()
-        holder["s"] = self._chat = ChatSession(client=client, ctx=ctx, session_id=session_id)
+        holder["s"] = self._chat = ChatSession(
+            client=client, ctx=ctx, session_id=session_id, auto_allowed=set(options.allowed_tools)
+        )
         return self._chat
 
     async def close_chat(self) -> None:
@@ -235,7 +256,9 @@ class Brain:
         content.append({"type": "text", "text": f"{prefix}\n{text or 'What do you see?'}"})
         return {"type": "user", "message": {"role": "user", "content": content}, "parent_tool_use_id": None}
 
-    async def chat(self, text: str, images: list[Path], voice: bool = False, approve: bool = False) -> AsyncIterator[dict]:
+    async def chat(
+        self, text: str, images: list[Path], voice: bool = False, approve: bool = False, source: str = "chat"
+    ) -> AsyncIterator[dict]:
         """Run one turn, yielding UI events: text / tool / approval / done / error."""
         async with self._lock:
             try:
@@ -246,6 +269,7 @@ class Brain:
                 return
 
             session.approve_turn = approve
+            session.source = source
             session.pending_approvals = []
             session.ctx.expression = None
             session.last_used = time.monotonic()
@@ -273,6 +297,7 @@ class Brain:
                     elif isinstance(msg, AssistantMessage) and not msg.parent_tool_use_id:
                         for block in msg.content:
                             if isinstance(block, ToolUseBlock):
+                                self._audit(session.source, block, session.auto_allowed)
                                 bare = bare_tool_name(block.name)
                                 if bare != "express":
                                     yield {"type": "tool", "name": bare,
@@ -303,11 +328,16 @@ class Brain:
         """One-shot run of a proactive task. Outside-world writes are always denied here."""
         ctx = TurnContext(mode="task")
 
+        source = f"task: {title}"
+
         async def can_use_tool(name: str, tool_input: dict, _c: ToolPermissionContext):
+            bare, summary = bare_tool_name(name), summarize_input(tool_input)
             if is_write_tool(name):
+                self.db.log_action(source, bare, summary, "blocked")
                 return PermissionResultDeny(
                     message="Background tasks cannot act on the outside world. Use `notify` to tell the owner instead."
                 )
+            self.db.log_action(source, bare, summary, "ran")
             return PermissionResultAllow()
 
         options = self._options(ctx, can_use_tool, None, max_turns=30)
@@ -327,8 +357,13 @@ class Brain:
         try:
             await client.connect()
             await client.query(prompt_stream())
+            auto_allowed = set(options.allowed_tools)
             async for msg in client.receive_response():
-                if isinstance(msg, ResultMessage):
+                if isinstance(msg, AssistantMessage) and not msg.parent_tool_use_id:
+                    for block in msg.content:
+                        if isinstance(block, ToolUseBlock):
+                            self._audit(source, block, auto_allowed)
+                elif isinstance(msg, ResultMessage):
                     result = msg.result or f"(ended: {msg.subtype})"
         finally:
             await client.disconnect()

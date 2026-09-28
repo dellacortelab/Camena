@@ -200,7 +200,7 @@ def test_api_is_locked_until_login(settings):
 def test_chat_streams_events_with_a_fake_brain(settings):
     app = create_app(settings, start_scheduler=False)
 
-    async def fake_chat(text, images, voice=False, approve=False):
+    async def fake_chat(text, images, voice=False, approve=False, source="chat"):
         yield {"type": "tool", "name": "WebSearch", "label": "searching the web"}
         yield {"type": "text", "delta": "Hello "}
         yield {"type": "text", "delta": "there"}
@@ -247,3 +247,90 @@ def test_push_signs_with_the_stored_key(db, monkeypatch):
     assert push.send("t", "b") == 1
     assert seen["headers"]["Authorization"].startswith("vapid t=")
     assert Push(db, "mailto:t@example.com").public_key == push.public_key  # key persists
+
+
+# ---- v0.2: Siri shortcut, audit trail, briefing, nudges ------------------------------
+
+def _logged_in(settings, fake_chat=None):
+    app = create_app(settings, start_scheduler=False)
+    if fake_chat:
+        app.state.camena.brain.chat = fake_chat
+    client = TestClient(app)
+    client.post("api/login", json={"passcode": "hunter22"})
+    return app, client
+
+
+def test_shortcut_needs_its_token_and_speaks_plain_text(settings):
+    import base64 as b64
+    seen = {}
+
+    async def fake_chat(text, images, voice=False, approve=False, source="chat"):
+        seen.update(text=text, images=images, voice=voice, source=source)
+        yield {"type": "approval", "tool": "send_message", "summary": "to: anna"}
+        yield {"type": "done", "text": "Sure thing.", "expression": None}
+
+    app, client = _logged_in(settings, fake_chat)
+    token = client.get("api/shortcut/token").json()["token"]
+    anon = TestClient(app)  # no cookie, like the Shortcuts app
+    assert anon.post("api/shortcut", json={"text": "hi"}).status_code == 401
+    assert anon.post("api/shortcut", json={"text": "hi"}, headers={"Authorization": "Bearer nope"}).status_code == 401
+
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+    res = anon.post("api/shortcut", headers={"Authorization": f"Bearer {token}"},
+                    json={"text": "what is this?", "image": b64.b64encode(png).decode(), "url": "https://x.test/r"})
+    assert res.status_code == 200 and res.headers["content-type"].startswith("text/plain")
+    assert res.text == "Sure thing. Open Camena to approve."
+    assert seen["voice"] and seen["source"] == "shortcut" and "https://x.test/r" in seen["text"]
+    assert seen["images"][0].suffix == ".png" and seen["images"][0].read_bytes() == png
+
+    # multipart works too (Shortcuts' "Form" body)
+    res = anon.post("api/shortcut", headers={"Authorization": f"Bearer {token}"}, data={"text": "hello"})
+    assert res.status_code == 200
+
+    new = client.post("api/shortcut/rotate").json()["token"]
+    assert new != token
+    assert anon.post("api/shortcut", json={"text": "hi"}, headers={"Authorization": f"Bearer {token}"}).status_code == 401
+
+
+def test_morning_brief_replaces_the_previous_one(settings):
+    app, client = _logged_in(settings)
+    assert client.post("api/tasks/morning-brief", json={"time": "25:00"}).status_code == 400
+    client.post("api/tasks/morning-brief", json={"time": "07:00"})
+    client.post("api/tasks/morning-brief", json={"time": "06:30"})
+    tasks = client.get("api/agenda").json()["tasks"]
+    assert [(t["title"], t["schedule"]) for t in tasks] == [("Morning briefing", "daily 06:30")]
+
+
+def test_actions_are_listed(settings):
+    app, client = _logged_in(settings)
+    app.state.camena.db.log_action("chat", "send_message", "to: anna", "blocked")
+    rows = client.get("api/actions").json()
+    assert rows[0]["tool"] == "send_message" and rows[0]["outcome"] == "blocked"
+
+
+def test_audit_logs_only_auto_allowed_calls(settings):
+    from claude_agent_sdk import ToolUseBlock
+
+    app = create_app(settings, start_scheduler=False)
+    brain, db = app.state.camena.brain, app.state.camena.db
+    allowed = {"WebSearch", "mcp__camena__express"}
+    brain._audit("chat", ToolUseBlock(id="1", name="WebSearch", input={"query": "rain lisbon"}), allowed)
+    brain._audit("chat", ToolUseBlock(id="2", name="mcp__camena__express", input={"expression": "happy"}), allowed)
+    brain._audit("chat", ToolUseBlock(id="3", name="mcp__x__send_message", input={}), allowed)  # gate logs this one
+    assert [(a["tool"], a["outcome"]) for a in db.all("SELECT * FROM actions")] == [("WebSearch", "ran")]
+
+
+def test_nudge_once_a_day_in_daytime_after_silence(settings):
+    app = create_app(settings, start_scheduler=False)
+    st = app.state.camena
+    sent = []
+    st.push.send = lambda title, body, url="./": sent.append(body) or 1
+    noon = datetime(2026, 9, 30, 12, 0, tzinfo=DENVER).astimezone(timezone.utc)
+    st.db.run("INSERT INTO messages(thread, role, text, created_at) VALUES('main','user','hi',?)",
+              (iso(noon - timedelta(hours=3)),))
+    assert not st.scheduler.nudge(noon)                       # talked 3h ago
+    st.db.run("UPDATE messages SET created_at = ?", (iso(noon - timedelta(hours=30)),))
+    assert not st.scheduler.nudge(noon.replace(hour=5))       # 23:00 local: asleep
+    assert st.scheduler.nudge(noon)
+    assert not st.scheduler.nudge(noon + timedelta(hours=2))  # already nudged today
+    assert len(sent) == 1 and "Cam" in sent[0]

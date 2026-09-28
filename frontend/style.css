@@ -194,3 +194,12 @@ input[type=password], input:not([type]), textarea, #set-name {
   .screen#main { max-width: 640px; margin: 0 auto; border-inline: 1px solid var(--line); }
   .drawer-panel { max-width: 640px; margin: 0 auto; }
 }
+
+.settings .inline { display: flex; gap: 8px; align-items: center; }
+.settings input[type=time] { font: inherit; font-size: 16px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; }
+.shortcut-help { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.shortcut-help summary { font-weight: 600; cursor: pointer; }
+.shortcut-help code { font-size: 0.78rem; word-break: break-all; background: var(--surface-2); padding: 1px 5px; border-radius: 6px; }
+.action { padding: 10px 0; border-bottom: 1px solid var(--line); display: grid; gap: 3px; }
+.action.blocked .badge { background: #c2452d22; color: var(--danger); }
+.action.approved .badge { background: #f2c14e33; color: #8a6a10; }

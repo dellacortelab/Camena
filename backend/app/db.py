@@ -64,6 +64,14 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS messages_by_thread ON messages(thread, id);
+CREATE TABLE IF NOT EXISTS actions (
+    id          INTEGER PRIMARY KEY,
+    source      TEXT NOT NULL,            -- 'chat' | 'task: <title>' | 'shortcut'
+    tool        TEXT NOT NULL,
+    summary     TEXT NOT NULL,
+    outcome     TEXT NOT NULL,            -- 'ran' | 'approved' | 'blocked'
+    created_at  TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS kv (
     key         TEXT PRIMARY KEY,
     value       TEXT NOT NULL
@@ -128,6 +136,12 @@ class DB:
         return self.run(
             "INSERT INTO messages(thread, role, text, image, created_at) VALUES(?,?,?,?,?)",
             (thread, role, text, image, iso(utcnow())),
+        )
+
+    def log_action(self, source: str, tool: str, summary: str, outcome: str) -> int:
+        return self.run(
+            "INSERT INTO actions(source, tool, summary, outcome, created_at) VALUES(?,?,?,?,?)",
+            (source, tool, summary, outcome, iso(utcnow())),
         )
 
     def add_inbox(self, source: str, title: str, body: str) -> int:
