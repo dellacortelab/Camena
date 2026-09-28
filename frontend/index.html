@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Camena</title>
+  <meta name="description" content="A personal AI companion that runs on your own Claude plan.">
+  <meta name="theme-color" content="#f6f1ea" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#16161d" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Camena">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Lock screen -->
+  <section id="login" class="screen" hidden>
+    <div class="login-card">
+      <div id="login-pet" class="login-pet"></div>
+      <h1>Camena</h1>
+      <p class="muted">Your companion is asleep. Wake it with your passcode.</p>
+      <form id="login-form">
+        <input id="passcode" type="password" inputmode="text" autocomplete="current-password" placeholder="Passcode" required>
+        <button class="primary" type="submit">Wake up</button>
+        <p id="login-error" class="error" role="alert"></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- Main -->
+  <section id="main" class="screen" hidden>
+    <header class="topbar">
+      <button id="menu-btn" class="icon-btn" aria-label="Open drawer">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+      </button>
+      <div class="title">
+        <span id="pet-name">Cam</span>
+        <span id="pet-stage" class="badge">egg</span>
+      </div>
+      <button id="inbox-btn" class="icon-btn" aria-label="Inbox">
+        <svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0"/></svg>
+        <span id="unread-dot" class="dot" hidden></span>
+      </button>
+    </header>
+
+    <div class="stage" id="stage">
+      <div id="thought" class="thought" hidden></div>
+      <button id="pet" class="pet" aria-label="Pat your companion"></button>
+      <div class="stats" aria-label="Companion stats">
+        <div class="stat" title="Fullness"><span>🍙</span><i><b id="bar-food"></b></i></div>
+        <div class="stat" title="Energy"><span>⚡</span><i><b id="bar-energy"></b></i></div>
+        <div class="stat" title="Affection"><span>💗</span><i><b id="bar-love"></b></i></div>
+      </div>
+      <div id="activity" class="activity" aria-live="polite"></div>
+    </div>
+
+    <div id="log" class="log" aria-live="polite"></div>
+
+    <div id="attachments" class="attachments" hidden></div>
+    <form id="composer" class="composer">
+      <button type="button" id="cam-btn" class="icon-btn round" aria-label="Camera">
+        <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+      </button>
+      <textarea id="input" rows="1" placeholder="Ask, or show me something…" enterkeyhint="send"></textarea>
+      <button type="button" id="mic-btn" class="icon-btn round mic" aria-label="Talk">
+        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
+      <button type="submit" id="send-btn" class="icon-btn round send" aria-label="Send" hidden>
+        <svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+      </button>
+    </form>
+  </section>
+
+  <!-- Camera sheet -->
+  <section id="camera" class="camera" hidden>
+    <video id="video" playsinline autoplay muted></video>
+    <div class="cam-top">
+      <button id="cam-close" class="icon-btn glass" aria-label="Close camera">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <span class="cam-hint">Point, then ask</span>
+      <button id="cam-flip" class="icon-btn glass" aria-label="Flip camera">
+        <svg viewBox="0 0 24 24"><path d="M4 9h13l-3-3M20 15H7l3 3"/></svg>
+      </button>
+    </div>
+    <div class="cam-bottom">
+      <button id="cam-snap" class="snap" aria-label="Take photo"></button>
+      <button id="cam-ask" class="icon-btn glass big" aria-label="Snap and ask by voice">
+        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
+    </div>
+    <input id="file-fallback" type="file" accept="image/*" capture="environment" hidden>
+  </section>
+
+  <!-- Drawer -->
+  <section id="drawer" class="drawer" hidden>
+    <div class="drawer-panel" role="dialog" aria-modal="true" aria-label="Camena drawer">
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="lists" aria-selected="true">Lists</button>
+        <button role="tab" data-tab="agenda">Agenda</button>
+        <button role="tab" data-tab="memory">Memory</button>
+        <button role="tab" data-tab="inbox">Inbox</button>
+        <button role="tab" data-tab="settings">Settings</button>
+      </nav>
+      <div id="drawer-body" class="drawer-body"></div>
+    </div>
+  </section>
+
+  <template id="settings-tpl">
+    <div class="settings">
+      <label class="row"><span>Companion name</span><input id="set-name" maxlength="24"></label>
+      <label class="row"><span>Speak every reply</span><input id="set-speak" type="checkbox"></label>
+      <div class="row"><span>Notifications <small id="push-status" class="muted"></small></span>
+        <button id="set-push" class="ghost">Enable</button></div>
+      <div class="row"><span>New conversation <small class="muted">memories stay</small></span>
+        <button id="set-reset" class="ghost">Start fresh</button></div>
+      <div class="row"><span>Lock this device</span><button id="set-logout" class="ghost danger">Lock</button></div>
+      <p class="muted small">Camena runs on your own Claude plan, through a small server you control.
+        Install it with Share → Add to Home Screen, then enable notifications here.</p>
+    </div>
+  </template>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

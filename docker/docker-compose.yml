@@ -1,0 +1,17 @@
+# Own compose stack (project `camena`), API + PWA on host port 8008.
+# Caddy: `handle_path /camena/* { reverse_proxy host.docker.internal:8008 }`
+name: camena
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8008:8000"
+    volumes:
+      - camena_data:/data
+    mem_limit: 2g
+volumes:
+  camena_data:

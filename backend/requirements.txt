@@ -1,0 +1,6 @@
+claude-agent-sdk>=0.2.161
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pyjwt>=2.8
+pywebpush>=2.0
