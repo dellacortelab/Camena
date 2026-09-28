@@ -29,7 +29,7 @@ function eyes(expr, activity, cx, cy) {
       return dot(L, cy, 9) + dot(R, cy, 9);
     case "sad": case "worried":
       return dot(L, cy + 2, 6) + dot(R, cy + 2, 6) +
-        `<path d="M${L - 9} ${cy - 12} l14 4 M${R + 9} ${cy - 12} l-14 4" class="stroke thin"/>`;
+        `<path d="M${L - 9} ${cy - 9} l14 -4 M${R + 9} ${cy - 9} l-14 -4" class="stroke thin"/>`;
     case "curious":
       return dot(L, cy, 6) + dot(R, cy - 1, 8.5) + `<path d="M${R - 9} ${cy - 16} q9 -6 18 0" class="stroke thin"/>`;
     case "silly":

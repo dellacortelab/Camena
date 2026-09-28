@@ -1,7 +1,9 @@
 """Runtime settings, all from environment variables.
 
-Nothing here has a secret default: a missing passcode or JWT secret stops the
-app at startup rather than letting it run open on the internet.
+Nothing here has a secret default: a missing passcode stops the app at
+startup rather than letting it run open on the internet. Owner name and
+timezone are only defaults; the setup screen stores the owner's choices in the
+database and they are applied on top of these at startup.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ def _env(name: str, default: str | None = None) -> str | None:
     return value if value not in (None, "") else default
 
 
-@dataclass(frozen=True)
+@dataclass
 class Settings:
     data_dir: Path
     passcode: str

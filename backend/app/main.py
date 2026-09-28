@@ -15,6 +15,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import jwt
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
@@ -24,6 +25,7 @@ from pydantic import BaseModel
 
 from . import schedule as sched
 from .agent import Brain
+from .claude_auth import ClaudeAuth
 from .config import Settings, load_settings
 from .db import DB, iso, utcnow
 from .pet import Pet
@@ -48,6 +50,16 @@ class Brief(BaseModel):
     time: str = "07:00"
 
 
+class Profile(BaseModel):
+    owner_name: str
+    timezone: str
+    pet_name: str = ""
+
+
+class Secret(BaseModel):
+    value: str
+
+
 MORNING_BRIEF_PROMPT = """\
 Write the owner's morning briefing, the way a thoughtful personal assistant would. Use what you know
 about them (recall their memories), today's weather where they live, their calendar if a calendar
@@ -64,15 +76,25 @@ class App:
         self.settings = settings
         settings.uploads_dir.mkdir(parents=True, exist_ok=True)
         self.db = DB(settings.db_path)
+        self.apply_profile(self.db.get_json("profile") or {})
         self.pet = Pet(self.db, settings.timezone)
         self.push = Push(self.db, settings.vapid_contact)
-        self.brain = Brain(self.db, self.pet, self.push, settings)
+        self.auth = ClaudeAuth(self.db)
+        self.brain = Brain(self.db, self.pet, self.push, settings, self.auth)
         self.scheduler = Scheduler(self.db, self.push, self.brain, settings)
         if not self.db.get_json("shortcut_token"):
             self.db.set_json("shortcut_token", secrets.token_urlsafe(24))
 
     def shortcut_token(self) -> str:
         return self.db.get_json("shortcut_token")
+
+    def apply_profile(self, profile: dict) -> None:
+        if profile.get("owner_name"):
+            self.settings.owner_name = profile["owner_name"]
+        if profile.get("timezone"):
+            self.settings.timezone = ZoneInfo(profile["timezone"])
+        if hasattr(self, "pet"):
+            self.pet.tz = self.settings.timezone
 
 
 def create_app(settings: Settings | None = None, start_scheduler: bool = True) -> FastAPI:
@@ -134,6 +156,9 @@ def create_app(settings: Settings | None = None, start_scheduler: bool = True) -
         db = state.db
         return {
             "owner": settings.owner_name,
+            "timezone": settings.timezone.key,
+            "setup_done": bool(db.get_json("setup_done")),
+            "claude": state.auth.status(),
             "pet": state.pet.get(),
             "unread": db.one("SELECT COUNT(*) AS n FROM inbox WHERE read = 0")["n"],
             "vapid_public_key": state.push.public_key,
@@ -142,6 +167,82 @@ def create_app(settings: Settings | None = None, start_scheduler: bool = True) -
                 "SELECT id, role, text, image, created_at FROM messages WHERE thread = 'main' ORDER BY id DESC LIMIT 40"
             ))),
         }
+
+    # ---- first-run setup: profile + connecting Claude -----------------------------
+
+    @app.post("/api/setup/profile", dependencies=authed)
+    async def setup_profile(body: Profile):
+        name = body.owner_name.strip()[:40]
+        if not name:
+            raise HTTPException(400, "what should I call you?")
+        try:
+            ZoneInfo(body.timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise HTTPException(400, f"unknown timezone {body.timezone!r}")
+        profile = {"owner_name": name, "timezone": body.timezone}
+        state.db.set_json("profile", profile)
+        state.apply_profile(profile)
+        if body.pet_name.strip():
+            state.pet.rename(body.pet_name)
+        await state.brain.reset_connection()  # the persona names the owner
+        return {"ok": True}
+
+    @app.post("/api/claude/login/start", dependencies=authed)
+    async def claude_login_start():
+        try:
+            return {"url": await state.auth.start_login()}
+        except RuntimeError as e:
+            raise HTTPException(502, str(e))
+
+    @app.post("/api/claude/login/finish", dependencies=authed)
+    async def claude_login_finish(body: Secret):
+        try:
+            await state.auth.finish_login(body.value)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except RuntimeError as e:
+            raise HTTPException(502, str(e))
+        return await _verify()
+
+    @app.post("/api/claude/token", dependencies=authed)
+    async def claude_token(body: Secret):
+        try:
+            state.auth.save_token(body.value)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return await _verify()
+
+    @app.post("/api/claude/api-key", dependencies=authed)
+    async def claude_api_key(body: Secret):
+        try:
+            state.auth.save_api_key(body.value)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return await _verify()
+
+    @app.post("/api/claude/verify", dependencies=authed)
+    async def claude_verify():
+        return await _verify()
+
+    @app.post("/api/claude/disconnect", dependencies=authed)
+    async def claude_disconnect():
+        state.auth.disconnect()
+        await state.brain.reset_connection()
+        return state.auth.status()
+
+    async def _verify() -> dict:
+        try:
+            model = await state.brain.verify()
+        except Exception as e:  # noqa: BLE001 - any failure is shown to the owner
+            raise HTTPException(502, f"Saved, but the test call failed: {e}")
+        return {**state.auth.status(), "model": model}
+
+    @app.post("/api/setup/done", dependencies=authed)
+    async def setup_done():
+        if not state.auth.status()["connected"]:
+            raise HTTPException(400, "connect Claude first")
+        state.db.set_json("setup_done", True)
+        return {"ok": True}
 
     # ---- chat (streamed as server-sent events over a POST) ----------------------
 

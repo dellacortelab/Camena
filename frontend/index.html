@@ -31,6 +31,61 @@
     </div>
   </section>
 
+  <!-- First-run setup -->
+  <section id="setup" class="screen" hidden>
+    <div class="setup-card">
+      <div id="setup-pet" class="login-pet"></div>
+      <ol class="steps" aria-label="Setup progress"><li data-step="1">You</li><li data-step="2">Claude</li><li data-step="3">Home Screen</li></ol>
+
+      <form id="step-1" class="step">
+        <h2>Nice to meet you</h2>
+        <label>What should I call you?<input id="su-name" autocomplete="given-name" required maxlength="40"></label>
+        <label>Your timezone<input id="su-tz" required></label>
+        <label>Name your companion<input id="su-pet" placeholder="Cam" maxlength="24"></label>
+        <button class="primary" type="submit">Next</button>
+        <p class="error" role="alert"></p>
+      </form>
+
+      <div id="step-2" class="step" hidden>
+        <h2>Connect your Claude account</h2>
+        <p class="muted">Camena thinks with your own Claude subscription (Pro or Max). You sign in on claude.ai; your password never touches Camena.</p>
+        <div id="claude-connected" class="ok-box" hidden></div>
+        <div id="claude-connect">
+          <button id="su-link" class="primary" type="button">1 · Get my sign-in link</button>
+          <a id="su-open" class="primary as-button" target="_blank" rel="noopener" hidden>Open claude.ai to sign in ↗</a>
+          <p id="su-link-help" class="muted small" hidden>Sign in, tap <strong>Authorize</strong>, then copy the code Claude shows you and come back here.</p>
+          <form id="su-code-form" hidden>
+            <label>2 · Paste the code<input id="su-code" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="looks like abc123…#xyz…"></label>
+            <button class="primary" type="submit">Connect</button>
+          </form>
+          <details class="alt-auth">
+            <summary>Other ways to connect</summary>
+            <form id="su-token-form">
+              <label>Token from <code>claude setup-token</code> on a computer<input id="su-token" autocomplete="off" spellcheck="false" placeholder="sk-ant-oat01-…"></label>
+              <button class="ghost" type="submit">Use token</button>
+            </form>
+            <form id="su-key-form">
+              <label>Anthropic API key (pay per use, not your subscription)<input id="su-key" autocomplete="off" spellcheck="false" placeholder="sk-ant-api03-…"></label>
+              <button class="ghost" type="submit">Use API key</button>
+            </form>
+          </details>
+        </div>
+        <p id="su-status" class="muted" role="status"></p>
+        <p id="su-error" class="error" role="alert"></p>
+        <button id="su-next-2" class="primary" type="button" hidden>Next</button>
+      </div>
+
+      <div id="step-3" class="step" hidden>
+        <h2>Put me on your Home Screen</h2>
+        <div id="su-ios">
+          <p>In Safari, tap <strong>Share</strong> <span aria-hidden="true">⬆︎</span>, then <strong>Add to Home Screen</strong>. Open Camena from its new icon from now on. That's what allows notifications, and it feels like a real app.</p>
+        </div>
+        <p id="su-installed" class="ok-box" hidden>You're running from the Home Screen. 🎉</p>
+        <button id="su-finish" class="primary" type="button">Meet your companion</button>
+      </div>
+    </div>
+  </section>
+
   <!-- Main -->
   <section id="main" class="screen" hidden>
     <header class="topbar">
@@ -121,6 +176,8 @@
         <span class="inline"><input id="set-brief-time" type="time" value="07:00"><button id="set-brief" class="ghost">Set</button></span></div>
       <div class="row"><span>Notifications <small id="push-status" class="muted"></small></span>
         <button id="set-push" class="ghost">Enable</button></div>
+      <div class="row"><span>Claude account <small id="claude-status" class="muted"></small></span>
+        <button id="set-claude" class="ghost">Change</button></div>
       <div class="row"><span>New conversation <small class="muted">memories stay</small></span>
         <button id="set-reset" class="ghost">Start fresh</button></div>
       <div class="row"><span>Lock this device</span><button id="set-logout" class="ghost danger">Lock</button></div>

@@ -203,3 +203,27 @@ input[type=password], input:not([type]), textarea, #set-name {
 .action { padding: 10px 0; border-bottom: 1px solid var(--line); display: grid; gap: 3px; }
 .action.blocked .badge { background: #c2452d22; color: var(--danger); }
 .action.approved .badge { background: #f2c14e33; color: #8a6a10; }
+
+/* ---- setup ---- */
+#setup { align-items: center; overflow-y: auto; padding-inline: 16px; }
+.setup-card { width: min(420px, 100%); padding: 12px 0 32px; }
+.setup-card .login-pet { text-align: center; }
+.setup-card .login-pet svg { width: 140px; }
+.steps { display: flex; justify-content: center; gap: 6px; list-style: none; padding: 0; margin: 0 0 12px; counter-reset: s; font-size: 0.8rem; }
+.steps li { counter-increment: s; color: var(--muted); padding: 4px 10px; border-radius: 99px; background: var(--surface-2); }
+.steps li::before { content: counter(s) " · "; }
+.steps li.current { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.steps li.done { color: var(--accent); }
+.step { display: grid; gap: 12px; }
+.step h2 { margin: 4px 0; font-size: 1.35rem; letter-spacing: -0.01em; }
+.step label { display: grid; gap: 6px; font-size: 0.9rem; font-weight: 600; }
+.step label input { font-weight: 400; }
+.step p { margin: 0; line-height: 1.45; }
+.as-button { display: block; text-align: center; text-decoration: none; }
+.ok-box { background: #2f8f8318; border: 1px solid var(--accent); color: var(--text); border-radius: 12px; padding: 10px 12px; }
+.alt-auth { font-size: 0.9rem; }
+.alt-auth summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
+.alt-auth form { display: grid; gap: 8px; margin-top: 10px; }
+.alt-auth code { font-size: 0.8rem; }
+#su-link, #su-open, #su-code-form { margin-top: 2px; }
+#su-code-form { display: grid; gap: 10px; }

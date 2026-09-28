@@ -16,9 +16,10 @@ COPY frontend frontend
 ENV CAMENA_DATA_DIR=/data \
     HOME=/data/home \
     PYTHONUNBUFFERED=1
+COPY docker/entrypoint.sh /usr/local/bin/camena-entrypoint
 RUN mkdir -p /data/home && chown -R camena:camena /data
-USER camena
 WORKDIR /app/backend
 EXPOSE 8000
-ENTRYPOINT ["tini", "--"]
-CMD ["uvicorn", "app.main:app_factory", "--factory", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
+  CMD python -c "import os,urllib.request;urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",\"8000\")}/api/health',timeout=4)"
+ENTRYPOINT ["tini", "--", "camena-entrypoint"]

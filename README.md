@@ -25,6 +25,14 @@ iPhone (PWA on the home screen)                   your server (Docker, host:8008
                                                          Anthropic
 ```
 
+## Get your own
+
+Camena is one-owner software: everyone runs their own copy, on their own Claude plan.
+
+**[Deploy on Railway](docs/RAILWAY.md)**: about 5 minutes and roughly $5/month. Railway asks you to pick a
+passcode; then open the address on your iPhone, and the setup screen connects your Claude account and puts
+Camena on your Home Screen. *(A one-click Deploy button goes here once the Railway template is published.)*
+
 ## Why this is allowed on a Max plan
 
 The Claude Agent SDK used in your own projects draws from your Pro/Max usage limits

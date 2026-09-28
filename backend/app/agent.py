@@ -35,7 +35,8 @@ from claude_agent_sdk import (
 )
 from claude_agent_sdk.types import StreamEvent
 
-from .db import DB, utcnow
+from .claude_auth import ClaudeAuth
+from .db import DB, iso, utcnow
 from .pet import Pet
 from .push import Push
 from .tools import TurnContext, build_server
@@ -131,7 +132,8 @@ def summarize_input(tool_input: dict[str, Any], limit: int = 300) -> str:
 
 
 class Brain:
-    def __init__(self, db: DB, pet: Pet, push: Push, settings):
+    def __init__(self, db: DB, pet: Pet, push: Push, settings, auth: ClaudeAuth):
+        self.auth = auth
         self.db = db
         self.pet = pet
         self.push = push
@@ -166,6 +168,7 @@ class Brain:
             resume=resume,
             max_turns=max_turns,
             include_partial_messages=True,
+            env=self.auth.sdk_env(),
         )
 
     def _allowed(self, camena_tool_names: list[str]) -> list[str]:
@@ -321,6 +324,42 @@ class Brain:
             for pending in session.pending_approvals:
                 yield {"type": "approval", **pending}
             yield {"type": "done", "text": reply.strip(), "expression": session.ctx.expression}
+
+    # ---- setup ----------------------------------------------------------------------
+
+    async def verify(self) -> str:
+        """One tiny real call, to prove the stored credential works. Returns the model's name."""
+        await self.reset_connection()
+        options = ClaudeAgentOptions(
+            tools=[], setting_sources=[], max_turns=1, model=self.settings.model,
+            system_prompt="Reply with exactly: OK", env=self.auth.sdk_env(),
+            cwd=str(self.settings.workspace_dir),
+        )
+        self.settings.workspace_dir.mkdir(parents=True, exist_ok=True)
+        model, result = "", None
+        client = ClaudeSDKClient(options)
+        try:
+            await client.connect()
+            await client.query("ping")
+            async for msg in client.receive_response():
+                if isinstance(msg, AssistantMessage):
+                    model = msg.model or model
+                    if msg.error:
+                        raise RuntimeError(str(msg.error))
+                elif isinstance(msg, ResultMessage):
+                    result = msg
+        finally:
+            await client.disconnect()
+        if result is None or result.is_error:
+            detail = (result.result if result else None) or (result.subtype if result else "no reply")
+            raise RuntimeError(f"Claude refused the credential: {detail}")
+        self.db.set_json("claude_verified", iso(utcnow()))
+        return model
+
+    async def reset_connection(self) -> None:
+        """Drop the warm session so the next turn picks up a new credential (history is kept)."""
+        async with self._lock:
+            await self.close_chat()
 
     # ---- background tasks ----------------------------------------------------------
 
