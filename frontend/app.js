@@ -268,7 +268,31 @@ function setActivity(activity, label = "") {
   state.activity = activity;
   $("#activity").textContent = label;
   drawPet();
+  keepAwake(Boolean(activity) || state.busy);
 }
+
+// Keep the screen on while Camena is listening, thinking or talking, so a long
+// spoken answer isn't cut off by auto-lock. Released shortly after it goes quiet
+// (the delay stops it flapping between "thinking" and "speaking").
+let wakeLock = null;
+let wakeRelease = null;
+async function keepAwake(on) {
+  if (!("wakeLock" in navigator)) return;
+  clearTimeout(wakeRelease);
+  if (!on) {
+    wakeRelease = setTimeout(() => { wakeLock?.release().catch(() => {}); wakeLock = null; }, 4000);
+    return;
+  }
+  if (wakeLock || document.hidden) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => { wakeLock = null; });
+  } catch { /* low battery mode, or not allowed: the screen just locks as usual */ }
+}
+document.addEventListener("visibilitychange", () => {
+  // iOS drops the lock when the app is backgrounded; take it back if we're still talking.
+  if (!document.hidden && (state.activity || state.busy)) keepAwake(true);
+});
 
 let thoughtTimer;
 function think(text) {
