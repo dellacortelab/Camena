@@ -452,13 +452,19 @@ function listen(onFinal) {
   recog.start();
 }
 
-$("#mic-btn").addEventListener("click", () => listen((t) => send(t, { voice: true })));
+$("#mic-btn").addEventListener("click", () => {
+  unlockSpeech(); // must happen inside the tap: the reply is spoken long after it
+  listen((t) => send(t, { voice: true }));
+});
 
 let speechUnlocked = false;
 function unlockSpeech() {
-  // iOS only lets speechSynthesis talk after it was used inside a user gesture.
+  // iOS only lets speechSynthesis talk after it was used inside a user gesture,
+  // and ignores an empty utterance, so speak a silent space.
   if (speechUnlocked || !("speechSynthesis" in window)) return;
-  speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+  const u = new SpeechSynthesisUtterance(" ");
+  u.volume = 0;
+  speechSynthesis.speak(u);
   speechUnlocked = true;
 }
 
@@ -567,6 +573,7 @@ $("#cam-snap").addEventListener("click", async () => {
   $("#input").focus();
 });
 $("#cam-ask").addEventListener("click", async () => {
+  unlockSpeech();
   // The Muse Charm move: point, snap, and ask out loud in one tap.
   await attach(snap());
   closeCamera();
@@ -653,7 +660,7 @@ async function openDrawer(tab) {
       $("#set-name").value = state.pet?.name || "";
       $("#set-name").addEventListener("change", async (e) => setPet(await post("pet/name", { name: e.target.value })));
       $("#set-speak").checked = !!prefs.speak;
-      $("#set-speak").addEventListener("change", (e) => { prefs.speak = e.target.checked; savePrefs(); });
+      $("#set-speak").addEventListener("change", (e) => { prefs.speak = e.target.checked; savePrefs(); unlockSpeech(); });
       $("#set-handsfree").checked = !!prefs.handsfree;
       $("#set-handsfree").addEventListener("change", (e) => { prefs.handsfree = e.target.checked; savePrefs(); });
       $("#set-brief").addEventListener("click", async () => {
