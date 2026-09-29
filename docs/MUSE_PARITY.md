@@ -5,7 +5,7 @@ Sources: Meta's [Muse launch post](https://about.fb.com/news/2026/09/introducing
 [TechCrunch](https://techcrunch.com/2026/09/25/meta-opens-early-access-program-for-new-muse-features/),
 [The AI Insider](https://theaiinsider.tech/2026/09/25/meta-goes-all-in-on-muse-ai-agent-at-connect-2026-with-avatars-camera-free-glasses-and-a-keychain-device/),
 [Bloomberg](https://www.bloomberg.com/news/articles/2026-09-23/meta-debuts-a-dedicated-palm-sized-muse-charm-device-to-use-ai-on-the-go)
-(2026-09-23 → 25). Evaluated 2026-09-28 against Camena `main`.
+(2026-09-23 → 25). Evaluated 2026-09-28 against Camena `main`; field-tested on an iPhone (Home Screen app, Railway deployment) on 2026-09-29.
 
 **What Muse is.** Muse is Meta's agent (model: Muse Spark), available in its iOS/Android apps, on the web,
 in WhatsApp, on a Mac app, and soon on AI glasses. **Muse Charm** is a keychain device made only for
@@ -19,18 +19,18 @@ Legend: ✅ parity · 🟡 partial · ❌ gap · ➖ out of scope on purpose
 
 | # | Muse / Charm feature | Camena | How | Verified |
 |---|---|---|---|---|
-| 1 | Talk to it by voice | ✅ | Mic button → Web Speech dictation; replies spoken with on-device TTS | UI flow in desktop Chrome; **iPhone to test** |
+| 1 | Talk to it by voice | ✅ | Mic button → Web Speech dictation in the Home Screen app; replies spoken with a natural server voice (see #3) | iPhone ✔ |
 | 2 | Real-time, interruptible "long conversation" voice mode | 🟡 | *Conversation mode* re-listens after each spoken reply. Turn-based, not full duplex; ~3–7 s per turn | logic only |
-| 3 | Custom voice design (speed, accent) | 🟡 | Natural neural voices (Kokoro, 11 American/British voices) generated on your own server and streamed one sentence at a time; the iPhone's own voices are the fallback. Choose a voice, not design one | live on iPhone |
+| 3 | Custom voice design (speed, accent) | 🟡 | Natural neural voices (Kokoro, 11 American/British voices) generated on your own server and streamed one sentence at a time; the iPhone's own voices are the fallback. Choose a voice, not design one | iPhone ✔ |
 | 4 | Squeeze-to-talk key (Charm fingerprint button) | ✅ | iPhone **Action button** → "Ask Camena" Shortcut → `/api/shortcut` → spoken answer | endpoint live-tested (5.2 s) |
 | 5 | Wake word ("Hey Muse" on glasses) | ✅ | "Hey Siri, Ask Camena" runs the same Shortcut, from the lock screen and CarPlay | endpoint live-tested |
-| 6 | Cameras: identify products, read signs, describe the view | ✅ | Camera sheet (rear/front), **snap-and-ask by voice** in one tap; images go to Claude | live: read a pasta label, cross-checked against memory |
+| 6 | Cameras: identify products, read signs, describe the view | ✅ | Camera sheet (rear/front), **snap-and-ask by voice** in one tap; images go to Claude | live: read a pasta label, cross-checked against memory; iPhone ✔ (Photo, and Snap & ask by voice) |
 | 7 | Glasses "sees what you see, no need to describe" | 🟡 | Phone must be pointed; the share sheet sends any photo or screenshot | — |
 | 8 | Animated avatar / realtime video avatar | 🟡 | A tamagotchi instead: 4 life stages, 12 expressions the agent sets itself, listening/thinking/talking animations. Not a video avatar | screenshots |
 | 9 | Remembers what matters, even things said once | ✅ | `remember` / `recall`; memories go into every session's instructions | live: "vegetarian" used unprompted in a later turn |
 | 10 | Tell it to forget | ✅ | Ask it, or tap × in Drawer → Memory | tested |
 | 11 | Unprompted suggestions | 🟡 | **Morning briefing** (one tap) suggests things from your memories each day; the pet nudges after 24 h of silence. No always-on event triggers | briefing route tested; nudge tested |
-| 12 | Keeps working after you close the app; comes back when something changes | ✅ | Background tasks on a schedule, silent unless their condition is met, then Web Push | live: Lisbon rain check ran, correctly stayed silent |
+| 12 | Keeps working after you close the app; comes back when something changes | ✅ | Background tasks on a schedule, silent unless their condition is met, then Web Push | live: Lisbon rain check ran, correctly stayed silent; push notifications arrive on iPhone ✔ |
 | 13 | Turn goals into a plan and coordinate it | ✅ | Plain Claude + lists + reminders + tasks | — |
 | 14 | Recipe reel → grocery list | 🟡 | Share sheet → Camena sends the link or screenshot; Claude builds the list. Instagram pages often need a login, so a **screenshot** is the reliable path | photo path live-tested |
 | 15 | Email / calendar / Drive / Notion / GitHub / Box | 🟡 | Whatever you connect in **claude.ai → Connectors** shows up as tools (seen live: Gmail and Calendar are listed but not yet authorized on this account) | connector listing seen; **authorize to test** |
@@ -53,17 +53,25 @@ Only three are real gaps: an agent email address, browser form-filling, and What
 That's roughly the "95% of what people will actually use it for" in the original question, provided
 the iPhone-only items below pass.
 
-## Still needs testing on a real iPhone
+## Field test on a real iPhone (2026-09-29)
 
-These are browser features whose support in an installed web app I couldn't prove from a Linux machine:
+The first end-to-end run: a fresh Railway account, deploy, set up on the phone, daily use from the Home
+Screen app. What it showed, and what was fixed on the spot:
 
-- **Speech recognition inside the home-screen app.** If `webkitSpeechRecognition` isn't exposed in
-  standalone mode, the mic button falls back to the keyboard's dictation key. The Siri Shortcut path
-  doesn't depend on it either way.
-- **Camera (`getUserMedia`) in standalone mode.** Supported since iOS 13.4. The fallback is the system
-  photo picker (`capture=environment`).
-- **Web Push**: iOS 16.4+, only after Add to Home Screen, and only after tapping Enable.
-- **Spoken replies without a tap first**: the app unlocks speech on your first send, as iOS requires.
+| Area | Result |
+|---|---|
+| Deploy on Railway (new account, trial credit) | ✔ Online in one build. The only confusion was the dashboard itself |
+| Connect Claude from the phone (relayed `claude setup-token`) | ✔ after a fix: real ~100-character codes were typed into the CLI together with Enter, which it swallowed as part of a paste, so the code was never submitted. Enter is now sent separately |
+| Connect screen feedback | Fixed: the Connect button shows "Connecting…" and can't be double-tapped, and a sign-in in progress survives Safari reloading the tab |
+| Speech recognition in the Home Screen app | ✔ works |
+| Camera in the Home Screen app | ✔ works. Added a labelled **Snap & ask** button; the mic stays available when a photo is attached |
+| Spoken replies | ✔ after two fixes: speech is now unlocked inside the mic tap (iOS requirement). The phone's own voices sounded robotic, and iOS doesn't give web apps its Premium voices, so replies now use Kokoro on the server |
+| Web Push notifications | ✔ arrive after *Enable notifications* in the Home Screen app |
+| Camera/mic permission asked again after every screen lock | iOS forgets web-app permissions when it unloads the app. **Fix: iPhone Settings → Apps → Safari → Camera and Microphone → Allow.** Now part of the setup guide |
+| Screen auto-locks during long spoken answers | Screen Wake Lock added while listening, thinking or speaking. Awaiting confirmation on the phone |
+
+Still open: claude.ai connectors (Gmail, Calendar) through the phone sign-in. Its token is chat-only
+(`user:inference`), so connectors probably won't carry over.
 
 ## What would close the remaining gaps
 

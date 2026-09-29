@@ -50,7 +50,11 @@ it straight from Safari.
 4. **Home Screen:** tap Safari's **Share** button → **Add to Home Screen** → **Add**.
 5. Close Safari and **open Camena from its new icon**. Enter your passcode once more (the Home Screen
    app keeps its own login).
-6. ☰ menu → **Settings**:
+6. **Stop the camera and microphone questions.** iOS forgets a web app's permissions whenever it
+   unloads it, so without this it asks again after every screen lock. On the iPhone:
+   **Settings → Apps → Safari → Settings for Websites → Camera → Allow**, and the same for
+   **Microphone → Allow**.
+7. ☰ menu → **Settings**:
    - **Enable notifications** → Allow, so reminders and background alerts reach you.
    - **Voice:** pick one of the *Camena voices* and tap ▶︎ to hear it.
 
@@ -78,7 +82,9 @@ Anything that would act on the outside world (sending, booking, deleting) waits 
 | The deploy failed | Railway → your service → **Deployments → View logs**. Most often it's a passcode shorter than 6 characters |
 | "Claude didn't accept that code" | Tap **Get a new sign-in link** and try again, copying the code right after authorizing |
 | No sound | Turn silent mode off. Pick a *Camena voice* in Settings and tap ▶︎ |
-| The mic does nothing | Allow microphone access: iPhone Settings → Apps → Safari → Microphone (or the keyboard's 🎙 works too) |
+| It asks for camera/mic permission every time | iPhone Settings → Apps → Safari → Settings for Websites → **Camera: Allow** and **Microphone: Allow** |
+| The mic does nothing | Same setting as above; or use the 🎙 key on the iPhone keyboard |
+| The screen locks while it's talking | Update iOS: keeping the screen awake from a Home Screen app needs a recent version |
 | No notifications | They only work from the **Home Screen icon**, after **Enable notifications** |
 | Forgot the passcode | Railway → Variables → change `CAMENA_PASSCODE`. Your data is kept |
 

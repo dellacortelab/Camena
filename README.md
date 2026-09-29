@@ -14,6 +14,8 @@ consequential. It's also a tamagotchi that grows up as you use it.
 [![Deploy on Railway](https://railway.com/button.svg)](RAILWAY_TEMPLATE_URL)
 
 You need an iPhone, a Claude **Pro or Max** subscription, and a Railway account (about $5/month).
+One iPhone setting makes it feel like a real app: **Settings → Apps → Safari → Settings for Websites →
+Camera and Microphone → Allow**. Otherwise iOS asks for permission again after every screen lock.
 Everyone runs their **own** copy: Claude subscriptions are personal, so don't share yours. Your
 partner or friend can deploy their own.
 
