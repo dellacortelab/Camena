@@ -93,6 +93,7 @@ async function boot() {
   $("#main").hidden = false;
   syncComposer();
   state.vapid = s.vapid_public_key;
+  state.owner = s.owner;
   state.pushDevices = s.push_devices;
   setPet(s.pet);
   setUnread(s.unread);
@@ -411,8 +412,9 @@ function syncComposer() {
   const el = $("#input");
   el.style.height = "auto";
   el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
-  const hasText = el.value.trim().length > 0 || state.attachments.length > 0;
-  $("#send-btn").hidden = !hasText;
+  const hasText = el.value.trim().length > 0;
+  // Typed text: send. A photo with no text yet: offer both, so you can ask about it out loud.
+  $("#send-btn").hidden = !hasText && state.attachments.length === 0;
   $("#mic-btn").hidden = hasText;
 }
 
@@ -468,12 +470,39 @@ function unlockSpeech() {
   speechUnlocked = true;
 }
 
-function pickVoice() {
-  const voices = speechSynthesis.getVoices();
+// Novelty voices macOS/iOS ship that nobody wants reading replies aloud.
+const NOVELTY = /albert|bad news|bahh|bells|boing|bubbles|cellos|fred|good news|jester|junior|kathy|organ|ralph|superstar|trinoids|whisper|wobble|zarvox|grandma|grandpa|eddy|flo|reed|rocko|sandy|shelley/i;
+
+let voiceList = [];
+function loadVoices() {
+  // iOS fills the list asynchronously; the first getVoices() call is often empty.
+  return new Promise((resolve) => {
+    if (!("speechSynthesis" in window)) return resolve([]);
+    const done = () => { voiceList = speechSynthesis.getVoices(); resolve(voiceList); };
+    if (speechSynthesis.getVoices().length) return done();
+    speechSynthesis.addEventListener("voiceschanged", done, { once: true });
+    setTimeout(done, 1500);
+  });
+}
+
+function voiceQuality(v) {
+  if (/premium/i.test(v.name)) return 3;
+  if (/enhanced|neural|natural/i.test(v.name)) return 2;
+  return v.localService === false ? 1.5 : 1;
+}
+
+function candidateVoices() {
   const lang = (navigator.language || "en-US").slice(0, 2);
-  const mine = voices.filter((v) => v.lang.startsWith(lang));
-  return mine.find((v) => /premium|enhanced|siri/i.test(v.name)) ||
-    mine.find((v) => /samantha|ava|zoe|karen|daniel/i.test(v.name)) || mine[0] || null;
+  return voiceList
+    .filter((v) => v.lang.startsWith(lang) && !NOVELTY.test(v.name))
+    .sort((a, b) => voiceQuality(b) - voiceQuality(a) || (b.lang === navigator.language) - (a.lang === navigator.language));
+}
+
+function pickVoice() {
+  const chosen = prefs.voice && voiceList.find((v) => v.voiceURI === prefs.voice);
+  if (chosen) return chosen;
+  const c = candidateVoices();
+  return c.find((v) => /ava|zoe|samantha|evan|nathan|allison|susan|serena/i.test(v.name) && voiceQuality(v) >= 2) || c[0] || null;
 }
 
 function speak(text) {
@@ -481,9 +510,9 @@ function speak(text) {
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(plain(text));
   const v = pickVoice();
-  if (v) u.voice = v;
-  u.rate = 1.05;
-  u.pitch = 1.1;
+  if (v) { u.voice = v; u.lang = v.lang; }
+  u.rate = 1.0;  // anything else makes even good voices sound synthetic
+  u.pitch = 1.0;
   u.onstart = () => setActivity("speaking", "");
   u.onend = u.onerror = () => {
     if (state.activity === "speaking") setActivity(null, "");
@@ -659,6 +688,20 @@ async function openDrawer(tab) {
       body.innerHTML = $("#settings-tpl").innerHTML;
       $("#set-name").value = state.pet?.name || "";
       $("#set-name").addEventListener("change", async (e) => setPet(await post("pet/name", { name: e.target.value })));
+      await loadVoices();
+      const voiceSel = $("#set-voice");
+      const current = pickVoice();
+      voiceSel.innerHTML = candidateVoices().map((v) => {
+        const tag = voiceQuality(v) >= 3 ? " (Premium)" : voiceQuality(v) >= 2 ? " (Enhanced)" : "";
+        const name = v.name.replace(/\s*\((premium|enhanced)\)/i, "");
+        return `<option value="${esc(v.voiceURI)}"${current && v.voiceURI === current.voiceURI ? " selected" : ""}>${esc(name)}${tag} · ${esc(v.lang)}</option>`;
+      }).join("") || `<option value="">No voices found</option>`;
+      voiceSel.addEventListener("change", () => { prefs.voice = voiceSel.value; savePrefs(); });
+      $("#set-voice-test").addEventListener("click", () => {
+        unlockSpeech();
+        speak(`Hi ${state.owner || ""}, I'm ${state.pet?.name || "Cam"}. How do I sound?`);
+      });
+      $("#voice-hint").hidden = candidateVoices().some((v) => voiceQuality(v) >= 3);
       $("#set-speak").checked = !!prefs.speak;
       $("#set-speak").addEventListener("change", (e) => { prefs.speak = e.target.checked; savePrefs(); unlockSpeech(); });
       $("#set-handsfree").checked = !!prefs.handsfree;
@@ -735,4 +778,5 @@ document.addEventListener("visibilitychange", async () => {
   }
 });
 syncComposer();
+loadVoices();
 boot();

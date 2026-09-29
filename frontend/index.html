@@ -138,16 +138,16 @@
       <button id="cam-close" class="icon-btn glass" aria-label="Close camera">
         <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
       </button>
-      <span class="cam-hint">Point, then ask</span>
+      <span class="cam-hint">Point, then tap “Snap &amp; ask” and talk</span>
       <button id="cam-flip" class="icon-btn glass" aria-label="Flip camera">
         <svg viewBox="0 0 24 24"><path d="M4 9h13l-3-3M20 15H7l3 3"/></svg>
       </button>
     </div>
     <div class="cam-bottom">
-      <button id="cam-snap" class="snap" aria-label="Take photo"></button>
-      <button id="cam-ask" class="icon-btn glass big" aria-label="Snap and ask by voice">
+      <div class="cam-action"><button id="cam-snap" class="snap" aria-label="Take photo"></button><span>Photo</span></div>
+      <div class="cam-action"><button id="cam-ask" class="snap ask" aria-label="Snap and ask by voice">
         <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
-      </button>
+      </button><span>Snap &amp; ask</span></div>
     </div>
     <input id="file-fallback" type="file" accept="image/*" capture="environment" hidden>
   </section>
@@ -170,6 +170,10 @@
   <template id="settings-tpl">
     <div class="settings">
       <label class="row"><span>Companion name</span><input id="set-name" maxlength="24"></label>
+      <div class="row voice-row"><span>Voice</span>
+        <span class="inline"><select id="set-voice"></select><button id="set-voice-test" class="ghost small" type="button">▶︎</button></span></div>
+      <p id="voice-hint" class="muted small hint" hidden>For a much more natural voice, download a free <strong>Premium</strong> voice:
+        iPhone <em>Settings → Accessibility → Spoken Content</em> (or <em>Read &amp; Speak</em>) <em>→ Voices → English</em> → e.g. <strong>Ava (Premium)</strong> or <strong>Zoe (Premium)</strong>. Then fully close and reopen Camena and pick it here.</p>
       <label class="row"><span>Speak every reply</span><input id="set-speak" type="checkbox"></label>
       <label class="row"><span>Conversation mode <small class="muted">keep listening after spoken replies</small></span>
         <input id="set-handsfree" type="checkbox"></label>
