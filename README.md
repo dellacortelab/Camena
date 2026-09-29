@@ -132,3 +132,8 @@ Locally the SDK uses whatever `claude` login the machine already has.
 
 [MIT](LICENSE). The voice model downloaded at build time is Kokoro (Apache-2.0). Camena is an
 independent project, not affiliated with or endorsed by Anthropic.
+
+**Use at your own risk.** Connecting a Claude subscription uses Claude Code's own sign-in, run on
+your own server. Anthropic's support has said third-party apps shouldn't offer subscription sign-in,
+even when self-hosted, so it could affect your Claude account. If you'd rather avoid that, connect
+an Anthropic API key instead (setup screen → *Other ways to connect*; pay per use).
