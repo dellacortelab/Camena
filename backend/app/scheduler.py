@@ -21,7 +21,8 @@ NUDGE_HOURS = range(10, 20)  # local time; never at night
 
 
 class Scheduler:
-    def __init__(self, db, push, brain, settings):
+    def __init__(self, db, push, brain, settings, speech=None):
+        self.speech = speech
         self.db = db
         self.push = push
         self.brain = brain
@@ -67,6 +68,8 @@ class Scheduler:
 
         self.nudge()
         await self.brain.reap_idle()
+        if self.speech is not None:
+            await asyncio.to_thread(self.speech.unload_if_idle)
 
     def nudge(self, now: datetime | None = None) -> bool:
         """The tamagotchi move: after a day of silence the companion asks for you, once a day."""

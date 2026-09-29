@@ -33,6 +33,7 @@ class Settings:
     session_idle_minutes: int
     task_timeout_seconds: int
     frontend_dir: Path
+    tts_dir: Path
     extra_allowed_tools: list[str] = field(default_factory=list)
 
     @property
@@ -83,5 +84,6 @@ def load_settings() -> Settings:
         session_idle_minutes=int(_env("CAMENA_SESSION_IDLE_MINUTES", "20")),
         task_timeout_seconds=int(_env("CAMENA_TASK_TIMEOUT_SECONDS", "300")),
         frontend_dir=Path(_env("CAMENA_FRONTEND_DIR", str(default_frontend))),
+        tts_dir=Path(_env("CAMENA_TTS_DIR", "/opt/kokoro")),
         extra_allowed_tools=extra,
     )

@@ -6,6 +6,7 @@ Every path is relative so the app works at the root locally and behind Caddy's
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import json
@@ -19,7 +20,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import jwt
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -31,6 +32,7 @@ from .db import DB, iso, utcnow
 from .pet import Pet
 from .push import Push
 from .scheduler import Scheduler
+from .tts import DEFAULT_VOICE, VOICES, Speech
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 COOKIE = "camena_session"
@@ -60,6 +62,12 @@ class Secret(BaseModel):
     value: str
 
 
+class Say(BaseModel):
+    text: str
+    voice: str = DEFAULT_VOICE
+    speed: float = 1.0
+
+
 MORNING_BRIEF_PROMPT = """\
 Write the owner's morning briefing, the way a thoughtful personal assistant would. Use what you know
 about them (recall their memories), today's weather where they live, their calendar if a calendar
@@ -81,7 +89,8 @@ class App:
         self.push = Push(self.db, settings.vapid_contact)
         self.auth = ClaudeAuth(self.db)
         self.brain = Brain(self.db, self.pet, self.push, settings, self.auth)
-        self.scheduler = Scheduler(self.db, self.push, self.brain, settings)
+        self.speech = Speech(settings.tts_dir)
+        self.scheduler = Scheduler(self.db, self.push, self.brain, settings, self.speech)
         if not self.db.get_json("shortcut_token"):
             self.db.set_json("shortcut_token", secrets.token_urlsafe(24))
 
@@ -105,6 +114,8 @@ def create_app(settings: Settings | None = None, start_scheduler: bool = True) -
     async def lifespan(_app: FastAPI):
         if start_scheduler:
             state.scheduler.start()
+            # Load the voice model in the background so the first reply isn't slowed down.
+            state.warm_task = asyncio.create_task(asyncio.to_thread(state.speech.warm))
         yield
         await state.scheduler.stop()
         await state.brain.close_chat()
@@ -353,6 +364,22 @@ def create_app(settings: Settings | None = None, start_scheduler: bool = True) -
         if path.parent != settings.uploads_dir.resolve() or not path.exists():
             raise HTTPException(404)
         return FileResponse(path)
+
+    # ---- voice (Kokoro on the server) ------------------------------------------------
+
+    @app.get("/api/tts/voices", dependencies=authed)
+    async def tts_voices():
+        return {"available": state.speech.available, "voices": VOICES, "default": DEFAULT_VOICE}
+
+    @app.post("/api/tts", dependencies=authed)
+    async def tts(body: Say):
+        if not state.speech.available:
+            raise HTTPException(503, state.speech.error or "server voice not installed")
+        try:
+            wav = await asyncio.to_thread(state.speech.synthesize, body.text, body.voice, body.speed)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return Response(wav, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
     # ---- the companion ----------------------------------------------------------
 

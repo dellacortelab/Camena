@@ -6,9 +6,9 @@ Anthropic's rule against third-party apps offering claude.ai login
 ([Agent SDK docs](https://code.claude.com/docs/en/agent-sdk/overview)). Before promoting Camena
 publicly, ask Anthropic, since the docs say "unless previously approved".
 
-Cost: Railway's Hobby plan is $5/month including $5 of usage. An idle Camena is one small container
-plus a Claude Code process while you're talking to it, which should fit within that (check Railway's
-current pricing).
+Cost: Railway's Hobby plan is $5/month including $5 of usage. Camena idles at ~80 MB; while you use it,
+the Claude Code process and the voice model (~300 MB, unloaded after 15 quiet minutes) add to that.
+Light use should stay near the included $5 (check Railway's current pricing and your usage page).
 
 ---
 

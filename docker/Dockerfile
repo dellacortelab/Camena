@@ -8,12 +8,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /app
 COPY backend/requirements.txt backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
+# Kokoro voice model (Apache-2.0), fetched at build time and pinned by checksum.
+# Its own layer, before the app code, so code changes don't re-download 200 MB.
+COPY docker/fetch_kokoro.py /tmp/fetch_kokoro.py
+RUN python /tmp/fetch_kokoro.py /opt/kokoro && rm /tmp/fetch_kokoro.py
+
 COPY backend backend
 COPY frontend frontend
 
 # HOME lives on the data volume so Claude session transcripts (used to resume
 # the conversation) survive container rebuilds.
 ENV CAMENA_DATA_DIR=/data \
+    CAMENA_TTS_DIR=/opt/kokoro \
     HOME=/data/home \
     PYTHONUNBUFFERED=1
 COPY docker/entrypoint.sh /usr/local/bin/camena-entrypoint

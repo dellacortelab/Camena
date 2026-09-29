@@ -21,7 +21,7 @@ Legend: ✅ parity · 🟡 partial · ❌ gap · ➖ out of scope on purpose
 |---|---|---|---|---|
 | 1 | Talk to it by voice | ✅ | Mic button → Web Speech dictation; replies spoken with on-device TTS | UI flow in desktop Chrome; **iPhone to test** |
 | 2 | Real-time, interruptible "long conversation" voice mode | 🟡 | *Conversation mode* re-listens after each spoken reply. Turn-based, not full duplex; ~3–7 s per turn | logic only |
-| 3 | Custom voice design (speed, accent) | 🟡 | Uses the best iOS voice installed (Premium/Siri voices if downloaded); rate/pitch set in code | — |
+| 3 | Custom voice design (speed, accent) | 🟡 | Natural neural voices (Kokoro, 11 American/British voices) generated on your own server and streamed one sentence at a time; the iPhone's own voices are the fallback. Choose a voice, not design one | live on iPhone |
 | 4 | Squeeze-to-talk key (Charm fingerprint button) | ✅ | iPhone **Action button** → "Ask Camena" Shortcut → `/api/shortcut` → spoken answer | endpoint live-tested (5.2 s) |
 | 5 | Wake word ("Hey Muse" on glasses) | ✅ | "Hey Siri, Ask Camena" runs the same Shortcut, from the lock screen and CarPlay | endpoint live-tested |
 | 6 | Cameras: identify products, read signs, describe the view | ✅ | Camera sheet (rear/front), **snap-and-ask by voice** in one tap; images go to Claude | live: read a pasta label, cross-checked against memory |

@@ -94,6 +94,7 @@ async function boot() {
   syncComposer();
   state.vapid = s.vapid_public_key;
   state.owner = s.owner;
+  loadServerVoices();
   state.pushDevices = s.push_devices;
   setPet(s.pet);
   setUnread(s.unread);
@@ -459,15 +460,35 @@ $("#mic-btn").addEventListener("click", () => {
   listen((t) => send(t, { voice: true }));
 });
 
+// Replies are spoken by Kokoro on the server (natural voices) when it is installed,
+// else by the phone's own speechSynthesis. prefs.voice is "kokoro:<id>" or a device voiceURI.
+
+const player = new Audio();
+let speakToken = 0;
 let speechUnlocked = false;
+
+function silentWav() {
+  // 0.05 s of silence, used to unlock <audio> inside a tap.
+  const n = 1200, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const str = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  str(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); str(8, "WAVEfmt "); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 24000, true); v.setUint32(28, 48000, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, n * 2, true);
+  return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+}
+
 function unlockSpeech() {
-  // iOS only lets speechSynthesis talk after it was used inside a user gesture,
-  // and ignores an empty utterance, so speak a silent space.
-  if (speechUnlocked || !("speechSynthesis" in window)) return;
-  const u = new SpeechSynthesisUtterance(" ");
-  u.volume = 0;
-  speechSynthesis.speak(u);
+  // iOS only lets a page make sound after it did so inside a tap. The reply is spoken
+  // long after the tap, so unlock both the audio element and speechSynthesis now.
+  if (speechUnlocked) return;
   speechUnlocked = true;
+  player.src = silentWav();
+  player.play().catch(() => {});
+  if ("speechSynthesis" in window) {
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0;
+    speechSynthesis.speak(u);
+  }
 }
 
 // Novelty voices macOS/iOS ship that nobody wants reading replies aloud.
@@ -485,6 +506,10 @@ function loadVoices() {
   });
 }
 
+async function loadServerVoices() {
+  try { state.serverVoices = await api("tts/voices"); } catch { state.serverVoices = { available: false, voices: [] }; }
+}
+
 function voiceQuality(v) {
   if (/premium/i.test(v.name)) return 3;
   if (/enhanced|neural|natural/i.test(v.name)) return 2;
@@ -498,6 +523,14 @@ function candidateVoices() {
     .sort((a, b) => voiceQuality(b) - voiceQuality(a) || (b.lang === navigator.language) - (a.lang === navigator.language));
 }
 
+function serverVoiceId() {
+  // The Kokoro voice to use, or null to use the phone's voice.
+  const sv = state.serverVoices;
+  if (!sv?.available) return null;
+  if (!prefs.voice) return sv.default;
+  return prefs.voice.startsWith("kokoro:") ? prefs.voice.slice(7) : null;
+}
+
 function pickVoice() {
   const chosen = prefs.voice && voiceList.find((v) => v.voiceURI === prefs.voice);
   if (chosen) return chosen;
@@ -505,26 +538,79 @@ function pickVoice() {
   return c.find((v) => /ava|zoe|samantha|evan|nathan|allison|susan|serena/i.test(v.name) && voiceQuality(v) >= 2) || c[0] || null;
 }
 
-function speak(text) {
-  if (!("speechSynthesis" in window)) return;
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(plain(text));
+function sentences(text) {
+  // Short first chunk so speech starts fast; later chunks a bit longer.
+  const parts = text.split(/(?<=[.!?…:;])\s+/).filter(Boolean);
+  const out = [];
+  for (const p of parts) {
+    const last = out[out.length - 1];
+    const limit = out.length <= 1 ? 80 : 220;
+    if (last && last.length < 40 && last.length + p.length < limit) out[out.length - 1] = `${last} ${p}`;
+    else out.push(p);
+  }
+  return out;
+}
+
+function afterSpeaking(token) {
+  if (token !== speakToken) return;
+  if (state.activity === "speaking") setActivity(null, "");
+  // Conversation mode: after answering a spoken question, listen for the follow-up.
+  if (prefs.handsfree && state.voiceTurn && !state.busy && !document.hidden) listen((t) => send(t, { voice: true }));
+}
+
+async function fetchSpeech(text, voice) {
+  const res = await api("tts", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice }),
+  });
+  return URL.createObjectURL(await res.blob());
+}
+
+function play(url, token) {
+  return new Promise((resolve) => {
+    if (token !== speakToken) return resolve();
+    player.onended = player.onerror = () => resolve();
+    player.src = url;
+    player.play().catch(() => resolve());
+  });
+}
+
+async function speak(text) {
+  stopSpeaking();
+  const token = ++speakToken;
+  const clean = plain(text);
+  const voice = serverVoiceId();
+  if (!voice) return speakDevice(clean, token);
+  const chunks = sentences(clean);
+  setActivity("speaking", "");
+  let next = fetchSpeech(chunks[0], voice);
+  for (let i = 0; i < chunks.length; i++) {
+    let url;
+    try { url = await next; } catch {
+      if (token === speakToken) speakDevice(chunks.slice(i).join(" "), token); // server voice failed: carry on locally
+      return;
+    }
+    if (i + 1 < chunks.length) next = fetchSpeech(chunks[i + 1], voice);  // prefetch while this one plays
+    if (token !== speakToken) return;
+    setActivity("speaking", "");
+    await play(url, token);
+    URL.revokeObjectURL(url);
+  }
+  afterSpeaking(token);
+}
+
+function speakDevice(text, token) {
+  if (!("speechSynthesis" in window)) return afterSpeaking(token);
+  const u = new SpeechSynthesisUtterance(text);
   const v = pickVoice();
   if (v) { u.voice = v; u.lang = v.lang; }
-  u.rate = 1.0;  // anything else makes even good voices sound synthetic
-  u.pitch = 1.0;
   u.onstart = () => setActivity("speaking", "");
-  u.onend = u.onerror = () => {
-    if (state.activity === "speaking") setActivity(null, "");
-    // Conversation mode: after answering a spoken question, listen for the follow-up.
-    if (prefs.handsfree && state.voiceTurn && !state.busy && !document.hidden) {
-      listen((t) => send(t, { voice: true }));
-    }
-  };
+  u.onend = u.onerror = () => afterSpeaking(token);
   speechSynthesis.speak(u);
 }
 
 function stopSpeaking() {
+  speakToken++;
+  player.pause();
   if ("speechSynthesis" in window) speechSynthesis.cancel();
 }
 
@@ -688,20 +774,25 @@ async function openDrawer(tab) {
       body.innerHTML = $("#settings-tpl").innerHTML;
       $("#set-name").value = state.pet?.name || "";
       $("#set-name").addEventListener("change", async (e) => setPet(await post("pet/name", { name: e.target.value })));
-      await loadVoices();
+      await Promise.all([loadVoices(), state.serverVoices ? null : loadServerVoices()]);
       const voiceSel = $("#set-voice");
-      const current = pickVoice();
-      voiceSel.innerHTML = candidateVoices().map((v) => {
+      const sv = state.serverVoices || { available: false, voices: [] };
+      const current = serverVoiceId() ? `kokoro:${serverVoiceId()}` : pickVoice()?.voiceURI;
+      const opt = (value, label) => `<option value="${esc(value)}"${value === current ? " selected" : ""}>${esc(label)}</option>`;
+      const server = sv.available ? `<optgroup label="Camena voices (natural)">${
+        sv.voices.map((v) => opt(`kokoro:${v.id}`, `${v.name} · ${v.accent}`)).join("")}</optgroup>` : "";
+      const device = candidateVoices().map((v) => {
         const tag = voiceQuality(v) >= 3 ? " (Premium)" : voiceQuality(v) >= 2 ? " (Enhanced)" : "";
-        const name = v.name.replace(/\s*\((premium|enhanced)\)/i, "");
-        return `<option value="${esc(v.voiceURI)}"${current && v.voiceURI === current.voiceURI ? " selected" : ""}>${esc(name)}${tag} · ${esc(v.lang)}</option>`;
-      }).join("") || `<option value="">No voices found</option>`;
+        return opt(v.voiceURI, `${v.name.replace(/\s*\((premium|enhanced)\)/i, "")}${tag} · ${v.lang}`);
+      }).join("");
+      voiceSel.innerHTML = (server + (device ? `<optgroup label="iPhone voices">${device}</optgroup>` : ""))
+        || `<option value="">No voices found</option>`;
       voiceSel.addEventListener("change", () => { prefs.voice = voiceSel.value; savePrefs(); });
       $("#set-voice-test").addEventListener("click", () => {
         unlockSpeech();
-        speak(`Hi ${state.owner || ""}, I'm ${state.pet?.name || "Cam"}. How do I sound?`);
+        speak(`Hi ${state.owner || "there"}! I'm ${state.pet?.name || "Cam"}. Is this voice nice to listen to?`);
       });
-      $("#voice-hint").hidden = candidateVoices().some((v) => voiceQuality(v) >= 3);
+      $("#voice-hint").hidden = sv.available || candidateVoices().some((v) => voiceQuality(v) >= 3);
       $("#set-speak").checked = !!prefs.speak;
       $("#set-speak").addEventListener("change", (e) => { prefs.speak = e.target.checked; savePrefs(); unlockSpeech(); });
       $("#set-handsfree").checked = !!prefs.handsfree;
