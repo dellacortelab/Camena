@@ -11,7 +11,7 @@ consequential. It's also a tamagotchi that grows up as you use it.
 
 **➡️ [Step-by-step guide](docs/GET_STARTED.md)**: about 15 minutes, no coding.
 
-[![Deploy on Railway](https://railway.com/button.svg)](RAILWAY_TEMPLATE_URL)
+[![Deploy on Railway](https://railway.com/button.svg)](docs/GET_STARTED.md) *(one-click deploy coming soon; until then the guide walks you through it)*
 
 You need an iPhone, a Claude **Pro or Max** subscription, and a Railway account (about $5/month).
 One iPhone setting makes it feel like a real app: **Settings → Apps → Safari → Settings for Websites →
