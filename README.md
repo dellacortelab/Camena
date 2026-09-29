@@ -127,3 +127,8 @@ Locally the SDK uses whatever `claude` login the machine already has.
   delete, book, buy, …) is denied until you tap **Approve**; background tasks can never do it, only
   notify you.
 - **Your data stays on your server**, apart from what goes to Anthropic to answer you.
+
+## License
+
+[MIT](LICENSE). The voice model downloaded at build time is Kokoro (Apache-2.0). Camena is an
+independent project, not affiliated with or endorsed by Anthropic.
