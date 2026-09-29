@@ -227,3 +227,9 @@ input[type=password], input:not([type]), textarea, #set-name {
 .alt-auth code { font-size: 0.8rem; }
 #su-link, #su-open, #su-code-form { margin-top: 2px; }
 #su-code-form { display: grid; gap: 10px; }
+.status-line { margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); font-weight: 600; }
+.status-line.busy::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -1px;
+  border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg) } }
+.linkish { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 4px 0; justify-self: start; }
+button:disabled { opacity: 0.6; }

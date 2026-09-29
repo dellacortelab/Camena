@@ -56,8 +56,11 @@
           <p id="su-link-help" class="muted small" hidden>Sign in, tap <strong>Authorize</strong>, then copy the code Claude shows you and come back here.</p>
           <form id="su-code-form" hidden>
             <label>2 · Paste the code<input id="su-code" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="looks like abc123…#xyz…"></label>
-            <button class="primary" type="submit">Connect</button>
+            <button id="su-connect" class="primary" type="submit">Connect</button>
+            <button id="su-restart" class="linkish small" type="button">Start over with a new link</button>
           </form>
+          <p id="su-status" class="status-line" role="status" hidden></p>
+          <p id="su-error" class="error" role="alert"></p>
           <details class="alt-auth">
             <summary>Other ways to connect</summary>
             <form id="su-token-form">
@@ -70,8 +73,6 @@
             </form>
           </details>
         </div>
-        <p id="su-status" class="muted" role="status"></p>
-        <p id="su-error" class="error" role="alert"></p>
         <button id="su-next-2" class="primary" type="button" hidden>Next</button>
       </div>
 

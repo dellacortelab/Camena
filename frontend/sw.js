@@ -1,5 +1,5 @@
 // App-shell cache for instant launch from the home screen, plus Web Push.
-const CACHE = "camena-v3";
+const CACHE = "camena-v4";
 const SHELL = ["./", "index.html", "style.css", "app.js", "pet.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 

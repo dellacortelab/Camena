@@ -122,8 +122,13 @@ class SetupTokenFlow:
             await asyncio.sleep(0.2)
         return None
 
-    def send(self, line: str) -> None:
-        os.write(self.fd, line.encode() + b"\r")
+    async def send(self, line: str) -> None:
+        # Type the text, pause, then press Enter as its own keystroke. Written in one
+        # burst, the CLI's input treats a long code as a paste and swallows the Enter,
+        # so the code is never submitted.
+        os.write(self.fd, line.encode())
+        await asyncio.sleep(0.6)
+        os.write(self.fd, b"\r")
 
     def close(self) -> None:
         if self.alive():
@@ -144,6 +149,7 @@ class ClaudeAuth:
         self.db = db
         self._cli = cli
         self._flow: SetupTokenFlow | None = None
+        self._finishing = asyncio.Lock()
         self._cli_login: bool | None = None
 
     @property
@@ -185,9 +191,15 @@ class ClaudeAuth:
                 self._cli_login = False
         return self._cli_login
 
+    def login_pending(self) -> bool:
+        """A sign-in link was handed out and is still waiting for its code (survives page reloads)."""
+        flow = self._flow
+        return flow is not None and flow.alive() and not flow.expired()
+
     def status(self) -> dict:
         method = self.method()
-        return {"connected": method is not None, "method": method, "verified": self.db.get_json("claude_verified")}
+        return {"connected": method is not None, "method": method,
+                "verified": self.db.get_json("claude_verified"), "login_pending": self.login_pending()}
 
     # ---- relayed sign-in ----------------------------------------------------------------
 
@@ -203,6 +215,12 @@ class ClaudeAuth:
         return match.group(0).split("Paste")[0]
 
     async def finish_login(self, code: str) -> str:
+        if self._finishing.locked():
+            raise ValueError("Already connecting. Give it a few seconds.")
+        async with self._finishing:
+            return await self._finish_login(code)
+
+    async def _finish_login(self, code: str) -> str:
         flow = self._flow
         if flow is None or flow.expired() or not flow.alive():
             self.cancel_login()
@@ -211,7 +229,7 @@ class ClaudeAuth:
         if not code or any(c.isspace() for c in code):
             raise ValueError("Paste the whole code from the Claude page.")
         before = len(flow.text())
-        flow.send(code)
+        await flow.send(code)
         outcome = re.compile(f"{TOKEN_RE.pattern}|{ERROR_RE.pattern}", re.S)
         await flow.wait_for(outcome, timeout=60)
         output = flow.text()[before:]
@@ -220,8 +238,10 @@ class ClaudeAuth:
         if not token:
             err = ERROR_RE.search(output)
             reason = err.group(1).strip() if err else (output.strip().splitlines() or ["no response"])[-1]
+            log.warning("sign-in code rejected (%d chars, has #: %s): %s", len(code), "#" in code, reason[:200])
             raise RuntimeError(f"Claude didn't accept that code ({reason[:160]}). Get a new link and try again.")
         self.save_token(token.group(0))
+        log.info("Claude subscription connected via relayed sign-in")
         return token.group(0)
 
     def cancel_login(self) -> None:

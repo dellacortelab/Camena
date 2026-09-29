@@ -90,3 +90,18 @@ def test_environment_wins(auth, monkeypatch):
     auth.save_token(FAKE_TOKEN)
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-" + "Z" * 40)
     assert auth.method() == "env-token" and auth.sdk_env() == {}
+
+
+def test_pending_login_is_reported_and_double_submit_is_refused(auth):
+    async def go():
+        assert not auth.login_pending()
+        await auth.start_login()
+        assert auth.login_pending() and auth.status()["login_pending"]
+        first = asyncio.create_task(auth.finish_login("good#code"))
+        await asyncio.sleep(0)  # let the first submit take the lock
+        with pytest.raises(ValueError, match="Already connecting"):
+            await auth.finish_login("good#code")
+        return await first
+
+    assert asyncio.run(go()) == FAKE_TOKEN
+    assert not auth.login_pending()

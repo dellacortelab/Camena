@@ -122,14 +122,19 @@ function setupStep(n) {
   $("#setup-pet").innerHTML = renderPet({ stage: "sprout", expression: moods[n] });
 }
 
-function showSetup(s, step = 1) {
+function showSetup(s, step = null) {
   $("#main").hidden = true;
   $("#setup").hidden = false;
   $("#su-name").value = s.owner && s.owner !== "friend" ? s.owner : "";
   $("#su-tz").value = Intl.DateTimeFormat().resolvedOptions().timeZone || s.timezone;
   $("#su-pet").value = s.pet?.name && s.pet.name !== "Cam" ? s.pet.name : "";
   renderClaude(s.claude);
-  setupStep(step);
+  // After a reload (iOS drops tabs you leave), land where the owner left off.
+  setupStep(step ?? (s.owner && s.owner !== "friend" ? 2 : 1));
+  if (s.claude?.login_pending && !s.claude?.connected) {
+    showCodeEntry();
+    setStatus("Welcome back! Paste the code from Claude to finish.");
+  }
 }
 
 function renderClaude(c) {
@@ -142,28 +147,50 @@ function renderClaude(c) {
   $("#su-link").textContent = c?.connected ? "Connect a different account" : "1 · Get my sign-in link";
 }
 
-async function claudeCall(path, body) {
+function setStatus(text, busy = false) {
+  const el = $("#su-status");
+  el.textContent = text;
+  el.hidden = !text;
+  el.classList.toggle("busy", busy);
+  if (text) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function showCodeEntry() {
+  ["#su-open", "#su-link-help", "#su-code-form"].forEach((sel) => { $(sel).hidden = false; });
+  $("#su-link").hidden = true;
+}
+
+function resetCodeEntry(label = "1 · Get my sign-in link") {
+  ["#su-open", "#su-link-help", "#su-code-form"].forEach((sel) => { $(sel).hidden = true; });
+  $("#su-link").hidden = false;
+  $("#su-link").textContent = label;
+}
+
+let claudeBusy = false;
+async function claudeCall(path, body, button) {
+  if (claudeBusy) return;
+  claudeBusy = true;
+  const label = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = "Connecting…"; }
   $("#su-error").textContent = "";
-  $("#su-status").textContent = "Checking with Claude…";
+  setStatus("Checking with Claude… this takes up to 20 seconds.", true);
   $("#setup-pet").innerHTML = renderPet({ stage: "sprout", expression: "thinking" }, "thinking");
   try {
     const c = await post(path, body);
     state.claude = c;
     renderClaude(c);
-    $("#su-status").textContent = "It works. Say hi soon!";
+    setStatus("It works. Say hi soon!");
     $("#setup-pet").innerHTML = renderPet({ stage: "sprout", expression: "love" });
-    ["#su-open", "#su-link-help", "#su-code-form"].forEach((sel) => { $(sel).hidden = true; });
-    $("#su-link").hidden = false;
+    resetCodeEntry("Connect a different account");
   } catch (err) {
-    $("#su-status").textContent = "";
+    setStatus("");
     $("#su-error").textContent = err.message;
     $("#setup-pet").innerHTML = renderPet({ stage: "sprout", expression: "worried" });
-    if (path === "claude/login/finish") {
-      // The CLI's sign-in session is gone after a failure: start over with a fresh link.
-      ["#su-open", "#su-link-help", "#su-code-form"].forEach((sel) => { $(sel).hidden = true; });
-      $("#su-link").hidden = false;
-      $("#su-link").textContent = "Get a new sign-in link";
-    }
+    // After a rejected code the CLI's sign-in session is gone: start over with a fresh link.
+    if (path === "claude/login/finish" && !/Already connecting/.test(err.message)) resetCodeEntry("Get a new sign-in link");
+  } finally {
+    claudeBusy = false;
+    if (button) { button.disabled = false; button.textContent = label; }
   }
 }
 
@@ -177,27 +204,31 @@ $("#step-1").addEventListener("submit", async (e) => {
   } catch (ex) { err.textContent = ex.message; }
 });
 
-$("#su-link").addEventListener("click", async () => {
+async function getLink() {
   $("#su-error").textContent = "";
-  $("#su-status").textContent = "Asking Claude for a sign-in link…";
+  setStatus("Asking Claude for a sign-in link…", true);
   $("#su-link").disabled = true;
   try {
     const { url } = await post("claude/login/start");
     $("#su-open").href = url;
-    ["#su-open", "#su-link-help", "#su-code-form"].forEach((sel) => { $(sel).hidden = false; });
-    $("#su-link").hidden = true;
     $("#su-code").value = "";
-    $("#su-status").textContent = "";
+    showCodeEntry();
+    setStatus("");
   } catch (err) {
-    $("#su-status").textContent = "";
+    setStatus("");
     $("#su-error").textContent = err.message;
   } finally {
     $("#su-link").disabled = false;
   }
+}
+
+$("#su-link").addEventListener("click", getLink);
+$("#su-restart").addEventListener("click", () => {
+  if (confirm("Start over? A code from the previous link will stop working.")) getLink();
 });
-$("#su-code-form").addEventListener("submit", (e) => { e.preventDefault(); claudeCall("claude/login/finish", { value: $("#su-code").value }); });
-$("#su-token-form").addEventListener("submit", (e) => { e.preventDefault(); claudeCall("claude/token", { value: $("#su-token").value }); });
-$("#su-key-form").addEventListener("submit", (e) => { e.preventDefault(); claudeCall("claude/api-key", { value: $("#su-key").value }); });
+$("#su-code-form").addEventListener("submit", (e) => { e.preventDefault(); claudeCall("claude/login/finish", { value: $("#su-code").value }, $("#su-connect")); });
+$("#su-token-form").addEventListener("submit", (e) => { e.preventDefault(); claudeCall("claude/token", { value: $("#su-token").value }, e.submitter); });
+$("#su-key-form").addEventListener("submit", (e) => { e.preventDefault(); claudeCall("claude/api-key", { value: $("#su-key").value }, e.submitter); });
 $("#su-next-2").addEventListener("click", () => {
   setupStep(3);
   $("#su-ios").hidden = standalone();
