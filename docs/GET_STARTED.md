@@ -24,11 +24,13 @@ it straight from Safari.
 
 ## Part 1 · Create your server (computer, ~7 minutes)
 
-1. Click **[Deploy on Railway](../README.md#get-your-own)** (the purple button in the README).
+1. Open **[railway.com/deploy/CeHh99](https://railway.com/deploy/CeHh99)** (the *Deploy on Railway* button
+   in the README goes to the same place).
 2. Railway asks you to sign in. **Continue with GitHub** or with email is fine. New accounts start with a
    trial credit; add a card when asked, which keeps the server running after the trial.
-3. You'll see one setting, **`CAMENA_PASSCODE`**. Type a passcode you'll remember (6+ characters).
-   It's the lock on your Camena; anyone with your web address *and* this passcode could use your Claude.
+3. You'll see one setting to fill in, **`CAMENA_PASSCODE`**. Type a passcode you'll remember
+   (6+ characters). It's the lock on your Camena; anyone with your web address *and* this passcode could
+   use your Claude. (If `PORT` shows up too, leave it at 8080.)
 4. Click **Deploy**. The first build takes **5–8 minutes** (it downloads the voice model). You can walk
    away; closing the page doesn't stop it.
 5. When the service shows **Online**, open it → **Settings → Networking** and copy your address, which

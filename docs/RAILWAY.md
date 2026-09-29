@@ -14,7 +14,7 @@ Light use should stay near the included $5 (check Railway's current pricing and 
 
 ## For the person deploying Camena
 
-**1. Deploy.** Click **Deploy on Railway** (link in the README). Sign in to Railway (GitHub sign-in is
+**1. Deploy.** Open **[railway.com/deploy/CeHh99](https://railway.com/deploy/CeHh99)**. Sign in to Railway (GitHub sign-in is
 fastest) and add a card if asked. Railway shows one field:
 
 | Variable | What to type |
@@ -55,7 +55,9 @@ A Railway template can only be made in the Railway dashboard.
    - Optional, with defaults: `CAMENA_OWNER_NAME`, `CAMENA_TIMEZONE`.
    - Confirm the volume at `/data` and public HTTP networking are included.
 7. **Create** → copy the template URL and put it in the README's Deploy button:
-   `[![Deploy on Railway](https://railway.com/button.svg)](<template URL>)`
+   `[![Deploy on Railway](https://railway.com/button.svg)](<template URL>)`.
+   Railway also lists `PORT` as a user-filled variable: set it to `8080` in the template so deployers
+   only choose a passcode. (Camena's template: `https://railway.com/deploy/CeHh99`, created 2026-09-29.)
 
 **Source visibility.** Railway can only build a private GitHub repo for accounts that have access to it.
 For anyone else to deploy, either make the repo public, or publish the image (e.g. to GHCR, public) and
